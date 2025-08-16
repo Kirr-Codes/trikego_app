@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "729849873791",
+    "project_id": "trikego-firebase",
+    "storage_bucket": "trikego-firebase.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:729849873791:android:39eb704691af10998f864a",
+        "android_client_info": {
+          "package_name": "com.example.trikego_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCAPhAajueEfCdEdIOmoBGYE_R6MoHgFag"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
