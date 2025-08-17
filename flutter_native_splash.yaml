@@ -1,12 +1,11 @@
 flutter_native_splash:
   android: true
-  ios: false
+  ios: true
   web: false
 
   color: "#0E4078"
-  image: assets/images/logo_tricycle.png
-  branding: assets/images/branding_logo.png
-  branding_mode: bottom
+  image: assets/images/logo_ios.png
+  branding: assets/images/branding_ios.png
 
   android_12:
     color: "#0E4078"
