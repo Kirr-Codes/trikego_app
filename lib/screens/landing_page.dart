@@ -84,12 +84,12 @@ class LandingPage extends StatelessWidget {
                         Text(
                           'Skip the hassle of finding a tricycle on the street, book instantly and travel with ease, saving you time and energy.',
                           style: GoogleFonts.josefinSans(
-                            color: Colors.white.withValues(alpha: 0.95),
+                            color: primary.withValues(alpha: 0.95),
                             height: 1.4,
                             fontWeight: FontWeight.w500,
                             fontSize: paragraphFontSize,
                           ),
-                          textAlign: TextAlign.center,
+                          textAlign: TextAlign.justify,
                         ),
                         const Spacer(),
                         Column(
