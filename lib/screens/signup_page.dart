@@ -1,4 +1,4 @@
-import 'package:flutter/gestures.dart';
+// import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
@@ -13,12 +13,14 @@ class SignUpPage extends StatefulWidget {
 }
 
 class _SignUpPageState extends State<SignUpPage> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController firstNameController = TextEditingController();
   final TextEditingController lastNameController = TextEditingController();
   final TextEditingController mobileController = TextEditingController();
   String completePhoneNumber = '';
   final TextEditingController emailController = TextEditingController();
   bool agreedToTerms = false;
+  bool isMobileValid = false;
 
   @override
   void dispose() {
@@ -75,7 +77,20 @@ class _SignUpPageState extends State<SignUpPage> {
       onChanged: (phone) {
         setState(() {
           completePhoneNumber = phone.completeNumber;
+          isMobileValid = phone.completeNumber.startsWith('+63') &&
+              phone.completeNumber.length == 13; // +63 + 10 digits
         });
+      },
+      validator: (value) {
+        if (value == null || value.number.isEmpty) {
+          return 'Please enter your mobile number';
+        }
+        final complete = value.completeNumber;
+        if (!complete.startsWith('+63') || complete.length != 13) {
+          return 'Enter a valid PH number (e.g., +639123456789)';
+        }
+        completePhoneNumber = complete;
+        return null;
       },
     );
   }
@@ -94,103 +109,131 @@ class _SignUpPageState extends State<SignUpPage> {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Welcome to TrikeGO!',
-                  style: GoogleFonts.inter(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Sign Up',
-                  style: GoogleFonts.inter(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: firstNameController,
-                  textInputAction: TextInputAction.next,
-                  decoration: _inputDecoration('First Name'),
-                  style: GoogleFonts.inter(fontSize: 16),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: lastNameController,
-                  textInputAction: TextInputAction.next,
-                  decoration: _inputDecoration('Last Name'),
-                  style: GoogleFonts.inter(fontSize: 16),
-                ),
-                const SizedBox(height: 16),
-                _mobileField(),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.done,
-                  decoration: _inputDecoration('Email'),
-                  style: GoogleFonts.inter(fontSize: 16),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      height: 24,
-                      width: 24,
-                      child: Checkbox.adaptive(
-                        value: agreedToTerms,
-                        onChanged: (v) =>
-                            setState(() => agreedToTerms = v ?? false),
-                        activeColor: AppColors.primary,
-                      ),
+            child: Form(
+              key: _formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Welcome to TrikeGO!',
+                    style: GoogleFonts.inter(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: RichText(
-                        text: TextSpan(
-                          style: GoogleFonts.inter(
-                            fontSize: 16,
-                            height: 1.4,
-                            color: Colors.black.withValues(alpha: 0.75),
-                          ),
-                          children: [
-                            const TextSpan(
-                              text:
-                                  'By creating an account means you agree to the ',
-                            ),
-                            TextSpan(
-                              text: 'Terms and Conditions',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
-                              ),
-                              recognizer: TapGestureRecognizer()..onTap = () {},
-                            ),
-                            const TextSpan(text: ', and our '),
-                            TextSpan(
-                              text: 'Privacy Policy',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
-                              ),
-                              recognizer: TapGestureRecognizer()..onTap = () {},
-                            ),
-                          ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Sign Up',
+                    style: GoogleFonts.inter(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  TextFormField(
+                    controller: firstNameController,
+                    textInputAction: TextInputAction.next,
+                    decoration: _inputDecoration('First Name'),
+                    style: GoogleFonts.inter(fontSize: 16),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Please enter your first name';
+                      }
+                      if (value.trim().length < 2) {
+                        return 'First name must be at least 2 characters';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: lastNameController,
+                    textInputAction: TextInputAction.next,
+                    decoration: _inputDecoration('Last Name'),
+                    style: GoogleFonts.inter(fontSize: 16),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Please enter your last name';
+                      }
+                      if (value.trim().length < 2) {
+                        return 'Last name must be at least 2 characters';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  _mobileField(),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.done,
+                    decoration: _inputDecoration('Email'),
+                    style: GoogleFonts.inter(fontSize: 16),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Please enter your email';
+                      }
+                      if (!RegExp(r'^[A-Za-z0-9._%+-]+@gmail\.com$', caseSensitive: false)
+                          .hasMatch(value.trim())) {
+                        return 'Please use a Gmail address';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: Checkbox.adaptive(
+                          value: agreedToTerms,
+                          onChanged: (v) => setState(() => agreedToTerms = v ?? false),
+                          activeColor: AppColors.primary,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 100),
-              ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: RichText(
+                          text: TextSpan(
+                            style: GoogleFonts.inter(
+                              fontSize: 16,
+                              height: 1.4,
+                              color: Colors.black.withValues(alpha: 0.75),
+                            ),
+                            children: [
+                              const TextSpan(
+                                text: 'By creating an account means you agree to the ',
+                              ),
+                              TextSpan(
+                                text: 'Terms and Conditions',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              const TextSpan(text: ', and our '),
+                              TextSpan(
+                                text: 'Privacy Policy',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 100),
+                ],
+              ),
             ),
           ),
         ),
@@ -203,7 +246,12 @@ class _SignUpPageState extends State<SignUpPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: agreedToTerms ? () {} : null,
+                onPressed: (agreedToTerms && isMobileValid && (_formKey.currentState?.validate() ?? false))
+                    ? () {
+                        Navigator.of(context)
+                            .pushNamed('/otp', arguments: completePhoneNumber);
+                      }
+                    : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
@@ -234,9 +282,6 @@ class _SignUpPageState extends State<SignUpPage> {
                       color: AppColors.primary,
                       fontWeight: FontWeight.w700,
                     ),
-                    recognizer: TapGestureRecognizer()
-                      ..onTap = () =>
-                          Navigator.of(context).pushNamed('/signin'),
                   ),
                 ],
               ),
