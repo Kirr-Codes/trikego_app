@@ -12,7 +12,20 @@
           "package_name": "com.example.trikego_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "729849873791-pt7fgc26gsmu56gt19htbrsr2nic6psl.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.trikego_app",
+            "certificate_hash": "a41f358a31e0289d71c4a510ad0a987b41dcf0a8"
+          }
+        },
+        {
+          "client_id": "729849873791-jh7u47fp57c3bvocqr8nf5929lu35c7k.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCAPhAajueEfCdEdIOmoBGYE_R6MoHgFag"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "729849873791-jh7u47fp57c3bvocqr8nf5929lu35c7k.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "729849873791-u5k7v2b9799ip5qfeh4pphtv7a7j4uor.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.trikegoApp"
+              }
+            }
+          ]
         }
       }
     }

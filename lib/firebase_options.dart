@@ -63,6 +63,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '729849873791',
     projectId: 'trikego-firebase',
     storageBucket: 'trikego-firebase.firebasestorage.app',
+    androidClientId: '729849873791-pt7fgc26gsmu56gt19htbrsr2nic6psl.apps.googleusercontent.com',
+    iosClientId: '729849873791-u5k7v2b9799ip5qfeh4pphtv7a7j4uor.apps.googleusercontent.com',
     iosBundleId: 'com.example.trikegoApp',
   );
 
