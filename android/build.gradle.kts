@@ -1,3 +1,5 @@
+// buildscript block not needed with Kotlin DSL + pluginManagement in settings.gradle.kts
+
 allprojects {
     repositories {
         google()
