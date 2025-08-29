@@ -7,7 +7,17 @@ import '../Services/auth_service.dart';
 
 class OtpPage extends StatefulWidget {
   final String phoneNumber;
-  const OtpPage({super.key, required this.phoneNumber});
+  final String firstName;
+  final String lastName;
+  final String email;
+
+  const OtpPage({
+    Key? key,
+    required this.phoneNumber,
+    required this.firstName,
+    required this.lastName,
+    required this.email,
+  }) : super(key: key);
 
   @override
   State<OtpPage> createState() => _OtpPageState();
@@ -15,184 +25,169 @@ class OtpPage extends StatefulWidget {
 
 class _OtpPageState extends State<OtpPage> {
   final TextEditingController codeController = TextEditingController();
+  final AuthService _authService = AuthService();
+
   static const int initialSeconds = 60;
   late int secondsRemaining;
   Timer? _timer;
-  bool isSendingCode = false;
   bool isVerifying = false;
-  String? _verificationId;
-  int? _resendToken;
+  bool isResending = false;
+  String phoneNumber = '';
 
-  void _startTimer() {
-    _timer?.cancel();
-    secondsRemaining = initialSeconds;
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) return;
-      setState(() {
-        if (secondsRemaining > 0) {
-          secondsRemaining--;
-        } else {
-          t.cancel();
-        }
-      });
+  Future<void> _sendCode({bool isResend = false}) async {
+    setState(() {
+      isResending = isResend;
     });
-  }
-
-  Future<void> _sendCode() async {
-    setState(() => isSendingCode = true);
-    await AuthService().verifyPhoneNumber(
-      phoneNumber: widget.phoneNumber,
-      onCodeSent: (_) {
-        if (!mounted) return;
-        setState(() {
-          isSendingCode = false;
-          _verificationId = AuthService().verificationId;
-          _resendToken = AuthService().resendToken;
-        });
-        _startTimer();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            backgroundColor: AppColors.primary,
-            content: Row(
-              children: const [
-                Icon(Icons.sms_outlined, color: Colors.white),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'OTP sent',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-      onVerificationCompleted: (_) async {
-        if (!mounted) return;
-        setState(() => isSendingCode = false);
-        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-      },
-      onVerificationFailed: (err) {
-        if (!mounted) return;
-        setState(() => isSendingCode = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            backgroundColor: Colors.red.shade700,
-            content: Row(
-              children: [
-                const Icon(Icons.error_outline, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Verification failed: $err',
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-      forceResendingToken: _resendToken,
-    );
-  }
-
-  Future<void> _verifyCode() async {
-    setState(() => isVerifying = true);
-    try {
-      final navigator = Navigator.of(context);
-      final messenger = ScaffoldMessenger.of(context);
-      final code = codeController.text.trim();
-      final user = await AuthService().verifyOTP(code);
-      if (!mounted) return;
-      if (user != null) {
-        navigator.pushNamedAndRemoveUntil('/', (route) => false);
-      } else {
-        messenger.showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            backgroundColor: Colors.red.shade700,
-            content: Row(
-              children: const [
-                Icon(Icons.error_outline, color: Colors.white),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Invalid OTP',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          backgroundColor: Colors.red.shade700,
-          content: Row(
-            children: [
-              const Icon(Icons.error_outline, color: Colors.white),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  e.toString(),
-                  style: const TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        ),
+    if (isResend) {
+      await _authService.resendOTP(
+        phoneNumber: widget.phoneNumber,
+        onCodeSent: (message) {
+          _showSuccessMessage(message);
+          _startTimer();
+        },
+        onError: (error) {
+          _showErrorMessage(error);
+        },
+      );
+    } else {
+      await _authService.sendOTP(
+        phoneNumber: widget.phoneNumber,
+        onCodeSent: (message) {
+          _showSuccessMessage(message);
+          _startTimer();
+        },
+        onVerificationCompleted: (_) async {
+          if (!mounted) return;
+          Navigator.pushReplacementNamed(context, '/homepage');
+        },
+        onError: (error) {
+          _showErrorMessage(error);
+        },
       );
     }
-    if (mounted) setState(() => isVerifying = false);
-  }
-
-  void _resendCode() {
-    if (secondsRemaining == 0) {
-      _sendCode();
-    }
+    if (!mounted) return;
+    setState(() {
+      isResending = false;
+    });
   }
 
   @override
   void initState() {
     super.initState();
     secondsRemaining = initialSeconds;
-    // Defer sending code until after first frame to avoid using context before init completes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      // Reset any previous session state on re-entry
-      _timer?.cancel();
-      secondsRemaining = initialSeconds;
-      isSendingCode = false;
-      isVerifying = false;
-      // Bootstrap from AuthService if there is a pending verification (re-entry)
-      _verificationId = AuthService().verificationId;
-      _resendToken = AuthService().resendToken;
-      if (_verificationId != null) {
-        _startTimer();
-      } else {
-        _sendCode();
-      }
+      _sendCode();
     });
+    _startTimer();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Get phone number from navigation arguments
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is String) {
+      phoneNumber = args;
+    }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    setState(() {
+      secondsRemaining = initialSeconds;
+    });
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+
+      setState(() {
+        if (secondsRemaining > 0) {
+          secondsRemaining--;
+        } else {
+          timer.cancel();
+        }
+      });
+    });
+  }
+
+  Future<void> _verifyCode() async {
+    setState(() {
+      isVerifying = true;
+    });
+    try {
+      final code = codeController.text.trim();
+      if (code.length != 6) {
+        _showErrorMessage('Enter the 6-digit code.');
+        return;
+      }
+      final user = await _authService.verifyOTP(code);
+
+      if (!mounted) return;
+
+      if (user != null) {
+        Navigator.pushReplacementNamed(context, '/homepage');
+      } else {
+        _showErrorMessage('Invalid OTP. Please try again.');
+      }
+    } catch (e) {
+      _showErrorMessage(e.toString());
+    } finally {
+      if (mounted) {
+        setState(() {
+          isVerifying = false;
+        });
+      }
+    }
+  }
+
+  void _resendCode() async {
+    if (isResending || secondsRemaining > 0) return;
+    await _sendCode(isResend: true);
+  }
+
+  void _showErrorMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(message, style: const TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  void _showSuccessMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(message, style: const TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   @override

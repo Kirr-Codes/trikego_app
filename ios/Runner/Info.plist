@@ -28,6 +28,21 @@
 		<string>LaunchScreen</string>
 		<key>UIMainStoryboardFile</key>
 		<string>Main</string>
+		<key>CFBundleURLTypes</key>
+		<string>NSLocationWhenInUseUsageDescription</string>
+		<key>Want to access your location while using the app?</key>
+		<string>NSLocationAlwaysAndWhenInUseUsageDescription</string>
+		<key>Want to access your location while using the app?</key>
+		<array>
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+				<string>com.googleusercontent.apps.729849873791-u5k7v2b9799ip5qfeh4pphtv7a7j4uor</string>
+				</array>
+			</dict>
+		</array>
 		<key>UISupportedInterfaceOrientations</key>
 		<array>
 			<string>UIInterfaceOrientationPortrait</string>

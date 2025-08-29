@@ -4,17 +4,18 @@ class AuthService {
   AuthService._();
   static final AuthService _instance = AuthService._();
   factory AuthService() => _instance;
-
+  // Create instances of Firebase Auth
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  // Private variables to store verification data
   String? _verificationId;
   int? _resendToken;
 
-  Future<void> verifyPhoneNumber({
+  // Method to send OTP to user's phone number
+  Future<bool> sendOTP({
     required String phoneNumber,
     required Function(String) onCodeSent,
     required Function(User) onVerificationCompleted,
-    required Function(String) onVerificationFailed,
-    int? forceResendingToken,
+    required Function(String) onError,
   }) async {
     try {
       await _auth.verifyPhoneNumber(
@@ -25,7 +26,7 @@ class AuthService {
           if (user != null) onVerificationCompleted(user);
         },
         verificationFailed: (FirebaseAuthException e) {
-          onVerificationFailed(e.message ?? 'Verification failed');
+          onError(e.message ?? 'Verification failed');
         },
         codeSent: (String verificationId, int? resendToken) {
           _verificationId = verificationId;
@@ -36,10 +37,11 @@ class AuthService {
           _verificationId = verificationId;
         },
         timeout: const Duration(seconds: 60),
-        forceResendingToken: forceResendingToken,
       );
+      return true;
     } catch (e) {
-      onVerificationFailed(e.toString());
+      onError(e.toString());
+      return false;
     }
   }
 
@@ -55,11 +57,44 @@ class AuthService {
     return result.user;
   }
 
+  Future<bool> resendOTP({
+    required String phoneNumber,
+    required Function(String) onCodeSent,
+    required Function(String) onError,
+  }) async {
+    try {
+      await _auth.verifyPhoneNumber(
+        phoneNumber: phoneNumber,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          await _auth.signInWithCredential(credential);
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          onError(e.message ?? 'Verification failed');
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          _verificationId = verificationId;
+          _resendToken = resendToken;
+          onCodeSent('OTP resent successfully');
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          _verificationId = verificationId;
+        },
+        timeout: const Duration(seconds: 60),
+        forceResendingToken: _resendToken,
+      );
+      return true;
+    } catch (e) {
+      onError(e.toString());
+      return false;
+    }
+  }
+  
+
   Future<void> signOut() => _auth.signOut();
   User? get currentUser => _auth.currentUser;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  // Expose current verification state for UI logic
+  // Expose current verification state for UI logic (if needed later)
   bool get hasPendingVerification => _verificationId != null;
   String? get verificationId => _verificationId;
   int? get resendToken => _resendToken;

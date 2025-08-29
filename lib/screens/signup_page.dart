@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:intl_phone_field/countries.dart';
+import 'package:trikego_app/Services/auth_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:trikego_app/screens/otp_page.dart';
 import '../main.dart' show AppColors;
 
 class SignUpPage extends StatefulWidget {
@@ -17,10 +20,67 @@ class _SignUpPageState extends State<SignUpPage> {
   final TextEditingController firstNameController = TextEditingController();
   final TextEditingController lastNameController = TextEditingController();
   final TextEditingController mobileController = TextEditingController();
-  String completePhoneNumber = '';
   final TextEditingController emailController = TextEditingController();
+
+  final AuthService _authService = AuthService();
+  String _completePhoneNumber = '';
+  bool isLoading = false;
   bool agreedToTerms = false;
-  bool isMobileValid = false;
+
+  void _handleSignUp() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      isLoading = true;
+    });
+
+    bool success = await _authService.sendOTP(
+      phoneNumber: _completePhoneNumber,
+      onCodeSent: (message) {
+        setState(() {
+          isLoading = false;
+        });
+        _showMessage(message);
+        _navigateToOTPScreen();
+      },
+      onVerificationCompleted: (user) {
+        setState(() {
+          isLoading = false;
+        });
+        _navigateToHomeScreen();
+      },
+      onError: (error) {
+        setState(() {
+          isLoading = false;
+        });
+        _showMessage(error);
+      },
+    );
+  }
+
+  void _navigateToOTPScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => OtpPage(
+          phoneNumber: _completePhoneNumber,
+          firstName: firstNameController.text.trim(),
+          lastName: lastNameController.text.trim(),
+          email: emailController.text.trim(),
+        ),
+      ),
+    );
+  }
+
+  void _navigateToHomeScreen() {
+    Navigator.pushReplacementNamed(context, '/homepage');
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
 
   @override
   void dispose() {
@@ -74,23 +134,12 @@ class _SignUpPageState extends State<SignUpPage> {
       style: GoogleFonts.inter(fontSize: 16),
       dropdownTextStyle: GoogleFonts.inter(fontSize: 16),
       flagsButtonPadding: const EdgeInsets.only(left: 8),
+
       onChanged: (phone) {
         setState(() {
-          completePhoneNumber = phone.completeNumber;
-          isMobileValid = phone.completeNumber.startsWith('+63') &&
-              phone.completeNumber.length == 13; // +63 + 10 digits
+          // Update complete phone number with country code
+          _completePhoneNumber = phone.completeNumber;
         });
-      },
-      validator: (value) {
-        if (value == null || value.number.isEmpty) {
-          return 'Please enter your mobile number';
-        }
-        final complete = value.completeNumber;
-        if (!complete.startsWith('+63') || complete.length != 13) {
-          return 'Enter a valid PH number (e.g., +639123456789)';
-        }
-        completePhoneNumber = complete;
-        return null;
       },
     );
   }
@@ -177,8 +226,10 @@ class _SignUpPageState extends State<SignUpPage> {
                       if (value == null || value.trim().isEmpty) {
                         return 'Please enter your email';
                       }
-                      if (!RegExp(r'^[A-Za-z0-9._%+-]+@gmail\.com$', caseSensitive: false)
-                          .hasMatch(value.trim())) {
+                      if (!RegExp(
+                        r'^[A-Za-z0-9._%+-]+@gmail\.com$',
+                        caseSensitive: false,
+                      ).hasMatch(value.trim())) {
                         return 'Please use a Gmail address';
                       }
                       return null;
@@ -193,7 +244,8 @@ class _SignUpPageState extends State<SignUpPage> {
                         width: 24,
                         child: Checkbox.adaptive(
                           value: agreedToTerms,
-                          onChanged: (v) => setState(() => agreedToTerms = v ?? false),
+                          onChanged: (v) =>
+                              setState(() => agreedToTerms = v ?? false),
                           activeColor: AppColors.primary,
                         ),
                       ),
@@ -208,7 +260,8 @@ class _SignUpPageState extends State<SignUpPage> {
                             ),
                             children: [
                               const TextSpan(
-                                text: 'By creating an account means you agree to the ',
+                                text:
+                                    'By creating an account means you agree to the ',
                               ),
                               TextSpan(
                                 text: 'Terms and Conditions',
@@ -246,12 +299,8 @@ class _SignUpPageState extends State<SignUpPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: (agreedToTerms && isMobileValid && (_formKey.currentState?.validate() ?? false))
-                    ? () {
-                        Navigator.of(context)
-                            .pushNamed('/otp', arguments: completePhoneNumber);
-                      }
-                    : null,
+                onPressed: isLoading || !agreedToTerms ? null : _handleSignUp,
+
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
