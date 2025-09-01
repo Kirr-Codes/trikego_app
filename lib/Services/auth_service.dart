@@ -1,9 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 
 class AuthService {
-  AuthService._();
-  static final AuthService _instance = AuthService._();
-  factory AuthService() => _instance;
   // Create instances of Firebase Auth
   final FirebaseAuth _auth = FirebaseAuth.instance;
   // Private variables to store verification data
@@ -88,7 +85,6 @@ class AuthService {
       return false;
     }
   }
-  
 
   Future<void> signOut() => _auth.signOut();
   User? get currentUser => _auth.currentUser;

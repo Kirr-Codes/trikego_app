@@ -6,6 +6,7 @@ import 'package:intl_phone_field/countries.dart';
 import 'package:trikego_app/Services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:trikego_app/screens/otp_page.dart';
+import '../utils/snackbar_utils.dart';
 import '../main.dart' show AppColors;
 
 class SignUpPage extends StatefulWidget {
@@ -77,9 +78,7 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    context.showInfo(message);
   }
 
   @override

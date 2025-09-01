@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'screens/landing_page.dart';
 import 'screens/signup_page.dart';
 import 'screens/signin_email_page.dart';
@@ -21,6 +22,11 @@ void main() async {
   );
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Optional: Use Firebase Auth Emulator for development (uncomment if needed)
+  // if (kDebugMode) {
+  //   await FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
+  // }
 
   runApp(const MyApp());
 }
@@ -86,11 +92,20 @@ class MyApp extends StatelessWidget {
         '/signin_email': (context) => const SignInEmailPage(),
         '/signup': (context) => const SignUpPage(),
         '/otp': (context) {
-          final args = ModalRoute.of(context)!.settings.arguments as String?;
+          final args = ModalRoute.of(context)!.settings.arguments;
+          if (args is Map<String, dynamic>) {
+            return OtpPage(
+              phoneNumber: args['phoneNumber'] ?? '',
+              firstName: args['firstName'] ?? '',
+              lastName: args['lastName'] ?? '',
+              email: args['email'] ?? '',
+            );
+          }
+          // Fallback for old string-only arguments
           return OtpPage(
-            phoneNumber: args ?? '',
-            lastName: '',
+            phoneNumber: args as String? ?? '',
             firstName: '',
+            lastName: '',
             email: '',
           );
         },
