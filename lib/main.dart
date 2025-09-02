@@ -23,11 +23,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Optional: Use Firebase Auth Emulator for development (uncomment if needed)
-  // if (kDebugMode) {
-  //   await FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
-  // }
-
   runApp(const MyApp());
 }
 
