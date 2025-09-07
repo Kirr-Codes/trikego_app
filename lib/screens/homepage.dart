@@ -181,7 +181,7 @@ class _HomePageState extends State<HomePage> {
             },
             initialCameraPosition: CameraPosition(
               target: _currentPosition ?? _defaultLocation,
-              zoom: 15,
+                zoom: 15,
             ),
             myLocationEnabled: _locationState.isActive,
             myLocationButtonEnabled: false,
@@ -463,10 +463,10 @@ class _HomePageState extends State<HomePage> {
                 color: Colors.green.shade600,
               ),
           ],
-        ),
-      ),
-    );
-  }
+                ),
+              ),
+            );
+          }
 
   Widget _circleIconButton({required IconData icon, VoidCallback? onTap}) {
     return Material(

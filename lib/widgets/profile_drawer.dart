@@ -2,12 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../main.dart' show AppColors;
 import '../utils/snackbar_utils.dart';
+import '../Services/auth_service.dart';
 
-class ProfileDrawer extends StatelessWidget {
+class ProfileDrawer extends StatefulWidget {
   const ProfileDrawer({super.key});
 
   @override
+  State<ProfileDrawer> createState() => _ProfileDrawerState();
+}
+
+class _ProfileDrawerState extends State<ProfileDrawer> {
+  final AuthService _authService = AuthService();
+
+  @override
   Widget build(BuildContext context) {
+    final user = _authService.currentUser;
     return Drawer(
       backgroundColor: AppColors.primary,
       child: Container(
@@ -44,7 +53,7 @@ class ProfileDrawer extends StatelessWidget {
                     
                     // Name
                     Text(
-                      'Name',
+                      user?.displayName ?? 'User',
                       style: GoogleFonts.inter(
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
@@ -55,7 +64,7 @@ class ProfileDrawer extends StatelessWidget {
                     
                     // Phone Number
                     Text(
-                      '+639 5465 065',
+                      user?.phoneNumber ?? 'No phone number',
                       style: GoogleFonts.inter(
                         fontSize: 16,
                         fontWeight: FontWeight.w400,
@@ -85,7 +94,7 @@ class ProfileDrawer extends StatelessWidget {
                         title: 'Edit profile',
                         onTap: () {
                           Navigator.pop(context);
-                          context.showInfo('Edit profile feature coming soon!');
+                          Navigator.pushNamed(context, '/edit_profile');
                         },
                       ),
                       _buildMenuItem(
