@@ -8,7 +8,6 @@
 		<string>Trikego App</string>
 		<key>CFBundleExecutable</key>
 		<string>$(EXECUTABLE_NAME)</string>
-		<string>729849873791-u5k7v2b9799ip5qfeh4pphtv7a7j4uor.apps.googleusercontent.com</string>
 		<key>CFBundleIdentifier</key>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 		<key>CFBundleInfoDictionaryVersion</key>
@@ -29,11 +28,11 @@
 		<string>LaunchScreen</string>
 		<key>UIMainStoryboardFile</key>
 		<string>Main</string>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>This app needs location access to show your current position and provide navigation services.</string>
+		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+		<string>This app needs location access to show your current position and provide navigation services.</string>
 		<key>CFBundleURLTypes</key>
-		<string>NSLocationWhenInUseUsageDescription</string>
-		<key>Want to access your location while using the app?</key>
-		<string>NSLocationAlwaysAndWhenInUseUsageDescription</string>
-		<key>Want to access your location while using the app?</key>
 		<array>
 			<dict>
 				<key>CFBundleTypeRole</key>
