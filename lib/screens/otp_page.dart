@@ -2,8 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pinput/pinput.dart';
+import 'package:trikego_app/Services/auth_service.dart';
 import '../main.dart' show AppColors;
-import '../Services/auth_service.dart';
 import '../utils/snackbar_utils.dart';
 
 class OtpPage extends StatefulWidget {
@@ -33,64 +33,51 @@ class _OtpPageState extends State<OtpPage> {
   Timer? _timer;
   bool isVerifying = false;
   bool isResending = false;
-  String phoneNumber = '';
+  StreamSubscription<AuthState>? _authStateSubscription;
 
-  Future<void> _sendCode({bool isResend = false}) async {
-    setState(() {
-      isResending = isResend;
-    });
-    if (isResend) {
-      await _authService.resendOTP(
-        phoneNumber: widget.phoneNumber,
-        onCodeSent: (message) {
-          _showSuccessMessage(message);
-          _startTimer();
-        },
-        onError: (error) {
-          _showErrorMessage(error);
-        },
-      );
-    } else {
-      await _authService.sendOTP(
-        phoneNumber: widget.phoneNumber,
-        onCodeSent: (message) {
-          _showSuccessMessage(message);
-          _startTimer();
-        },
-        onVerificationCompleted: (_) async {
-          if (!mounted) return;
-          Navigator.pushReplacementNamed(context, '/homepage');
-        },
-        onError: (error) {
-          _showErrorMessage(error);
-        },
-      );
+  Future<void> _resendOtp() async {
+    if (isResending || secondsRemaining > 0) return;
+
+    setState(() => isResending = true);
+
+    try {
+      final result = await _authService.resendOtp();
+
+      if (!mounted) return;
+
+      if (result.isSuccess) {
+        context.showSMS(result.message);
+        _startTimer();
+      } else {
+        context.showError(result.message);
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showError('Failed to resend OTP. Please try again.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => isResending = false);
+      }
     }
-    if (!mounted) return;
-    setState(() {
-      isResending = false;
-    });
   }
 
   @override
   void initState() {
     super.initState();
     secondsRemaining = initialSeconds;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _sendCode();
-    });
     _startTimer();
+    _setupAuthStateListener();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Get phone number from navigation arguments
-    final args = ModalRoute.of(context)?.settings.arguments;
-    if (args is String) {
-      phoneNumber = args;
-    }
+  void _setupAuthStateListener() {
+    _authStateSubscription = _authService.authStateStream.listen((state) {
+      if (!mounted) return;
+
+      // Handle authentication state changes
+      // Note: We'll handle success/error in the verify method directly
+      // This listener is for future enhancements
+    });
   }
 
   void _startTimer() {
@@ -113,53 +100,49 @@ class _OtpPageState extends State<OtpPage> {
   }
 
   Future<void> _verifyCode() async {
-    setState(() {
-      isVerifying = true;
-    });
+    final code = codeController.text.trim();
+
+    if (code.length != 6) {
+      context.showError('Please enter a valid 6-digit OTP code.');
+      return;
+    }
+
+    setState(() => isVerifying = true);
+
     try {
-      final code = codeController.text.trim();
-      if (code.length != 6) {
-        _showErrorMessage('Enter the 6-digit code.');
-        return;
-      }
-      final user = await _authService.verifyOTP(code);
+      final result = await _authService.verifyOtp(code);
 
       if (!mounted) return;
 
-      if (user != null) {
-        Navigator.pushReplacementNamed(context, '/homepage');
+      if (result.isSuccess) {
+        if (result.hasUser) {
+          // User authenticated successfully
+          context.showSuccess(result.message);
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/homepage',
+            (route) => false,
+          );
+        }
       } else {
-        _showErrorMessage('Invalid OTP. Please try again.');
+        // Show error message
+        context.showError(result.message);
       }
     } catch (e) {
-      _showErrorMessage(e.toString());
+      if (mounted) {
+        context.showError('Verification failed. Please try again.');
+      }
     } finally {
       if (mounted) {
-        setState(() {
-          isVerifying = false;
-        });
+        setState(() => isVerifying = false);
       }
     }
-  }
-
-  void _resendCode() async {
-    if (isResending || secondsRemaining > 0) return;
-    await _sendCode(isResend: true);
-  }
-
-  void _showErrorMessage(String message) {
-    if (!mounted) return;
-    context.showError(message);
-  }
-
-  void _showSuccessMessage(String message) {
-    if (!mounted) return;
-    context.showSuccess(message);
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _authStateSubscription?.cancel();
     codeController.dispose();
     super.dispose();
   }
@@ -218,20 +201,37 @@ class _OtpPageState extends State<OtpPage> {
               ),
               const SizedBox(height: 24),
               GestureDetector(
-                onTap: secondsRemaining == 0 ? _resendCode : null,
+                onTap: secondsRemaining == 0 && !isResending
+                    ? _resendOtp
+                    : null,
                 behavior: HitTestBehavior.opaque,
-                child: Text(
-                  'Resend code',
-                  style: GoogleFonts.inter(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: secondsRemaining == 0
-                        ? AppColors.primary
-                        : Colors.black45,
-                    decoration: secondsRemaining == 0
-                        ? TextDecoration.underline
-                        : TextDecoration.none,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isResending)
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    if (isResending) const SizedBox(width: 8),
+                    Text(
+                      isResending ? 'Resending...' : 'Resend code',
+                      style: GoogleFonts.inter(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: (secondsRemaining == 0 && !isResending)
+                            ? AppColors.primary
+                            : Colors.black45,
+                        decoration: (secondsRemaining == 0 && !isResending)
+                            ? TextDecoration.underline
+                            : TextDecoration.none,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 4),

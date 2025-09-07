@@ -4,8 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:intl_phone_field/countries.dart';
 import 'package:trikego_app/Services/auth_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:trikego_app/screens/otp_page.dart';
+import '../screens/otp_page.dart';
 import '../utils/snackbar_utils.dart';
 import '../main.dart' show AppColors;
 
@@ -28,35 +27,66 @@ class _SignUpPageState extends State<SignUpPage> {
   bool isLoading = false;
   bool agreedToTerms = false;
 
-  void _handleSignUp() async {
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _handleSignUp() async {
+    // Validate form and terms agreement
+    if (!_formKey.currentState!.validate()) {
+      context.showError('Please fill all fields correctly.');
+      return;
+    }
 
-    setState(() {
-      isLoading = true;
-    });
+    if (!agreedToTerms) {
+      context.showError('Please agree to the Terms and Conditions.');
+      return;
+    }
 
-    bool success = await _authService.sendOTP(
-      phoneNumber: _completePhoneNumber,
-      onCodeSent: (message) {
-        setState(() {
-          isLoading = false;
-        });
-        _showMessage(message);
-        _navigateToOTPScreen();
-      },
-      onVerificationCompleted: (user) {
-        setState(() {
-          isLoading = false;
-        });
-        _navigateToHomeScreen();
-      },
-      onError: (error) {
-        setState(() {
-          isLoading = false;
-        });
-        _showMessage(error);
-      },
-    );
+    // Validate phone number
+    if (_completePhoneNumber.isEmpty) {
+      context.showError('Please enter a valid phone number.');
+      return;
+    }
+
+    setState(() => isLoading = true);
+
+    try {
+      // Create user profile
+      final userProfile = UserProfile(
+        firstName: firstNameController.text.trim(),
+        lastName: lastNameController.text.trim(),
+        email: emailController.text.trim(),
+        phoneNumber: _completePhoneNumber,
+      );
+
+      // Start phone authentication
+      final result = await _authService.startPhoneAuth(
+        phoneNumber: _completePhoneNumber,
+        userProfile: userProfile,
+      );
+
+      if (!mounted) return;
+
+      if (result.isSuccess) {
+        if (result.hasUser) {
+          // Auto-verification completed
+          context.showSuccess(result.message);
+          _navigateToHomeScreen();
+        } else if (result.isOtpSent) {
+          // OTP sent, navigate to verification screen
+          context.showSMS(result.message);
+          _navigateToOTPScreen();
+        }
+      } else {
+        // Show error message
+        context.showError(result.message);
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showError('An unexpected error occurred. Please try again.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+    }
   }
 
   void _navigateToOTPScreen() {
@@ -74,11 +104,7 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   void _navigateToHomeScreen() {
-    Navigator.pushReplacementNamed(context, '/homepage');
-  }
-
-  void _showMessage(String message) {
-    context.showInfo(message);
+    Navigator.pushNamedAndRemoveUntil(context, '/homepage', (route) => false);
   }
 
   @override
@@ -309,13 +335,22 @@ class _SignUpPageState extends State<SignUpPage> {
                   ),
                   elevation: 3,
                 ),
-                child: Text(
-                  'SIGN UP',
-                  style: GoogleFonts.inter(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                  ),
-                ),
+                child: isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : Text(
+                        'SIGN UP',
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                      ),
               ),
             ),
             const SizedBox(height: 12),

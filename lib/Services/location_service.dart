@@ -47,7 +47,7 @@ class LocationService {
       // Get initial position and start tracking
       await _getCurrentPosition();
       _startTracking();
-
+      
       _updateState(LocationState.tracking);
       return true;
     } catch (e) {
@@ -70,8 +70,8 @@ class LocationService {
 
   /// Check if permission is granted
   bool _isPermissionGranted(LocationPermission permission) {
-    return permission == LocationPermission.always ||
-        permission == LocationPermission.whileInUse;
+    return permission == LocationPermission.always || 
+           permission == LocationPermission.whileInUse;
   }
 
   /// Get current position
@@ -82,7 +82,7 @@ class LocationService {
         distanceFilter: 10,
       ),
     );
-
+    
     final latLng = LatLng(position.latitude, position.longitude);
     _currentLocation = latLng;
     _locationController.add(latLng);
@@ -92,21 +92,21 @@ class LocationService {
   void _startTracking() {
     _positionStream =
         Geolocator.getPositionStream(
-          locationSettings: const LocationSettings(
+      locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.bestForNavigation,
-            distanceFilter: 10,
-          ),
-        ).listen(
-          (position) {
-            final latLng = LatLng(position.latitude, position.longitude);
-            _currentLocation = latLng;
-            _locationController.add(latLng);
-          },
-          onError: (error) {
-            if (kDebugMode) print('Location stream error: $error');
-            _updateState(LocationState.error);
-          },
-        );
+        distanceFilter: 10,
+      ),
+    ).listen(
+      (position) {
+        final latLng = LatLng(position.latitude, position.longitude);
+        _currentLocation = latLng;
+        _locationController.add(latLng);
+      },
+      onError: (error) {
+        if (kDebugMode) print('Location stream error: $error');
+        _updateState(LocationState.error);
+      },
+    );
   }
 
   /// Update state

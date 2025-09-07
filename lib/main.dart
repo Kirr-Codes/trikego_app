@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
+import 'package:trikego_app/Services/auth_service.dart';
 import 'screens/landing_page.dart';
 import 'screens/signup_page.dart';
 import 'screens/signin_email_page.dart';
 import 'screens/otp_page.dart';
 import 'screens/signin_page.dart';
+import 'screens/edit_profile_page.dart';
+import 'screens/phone_update_otp_page.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/homepage.dart';
@@ -14,14 +16,20 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Configure system UI
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       systemNavigationBarColor: AppColors.primary,
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
-  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Initialize Auth Service
+  await AuthService().initialize();
 
   runApp(const MyApp());
 }
@@ -87,24 +95,16 @@ class MyApp extends StatelessWidget {
         '/signin_email': (context) => const SignInEmailPage(),
         '/signup': (context) => const SignUpPage(),
         '/otp': (context) {
-          final args = ModalRoute.of(context)!.settings.arguments;
-          if (args is Map<String, dynamic>) {
-            return OtpPage(
-              phoneNumber: args['phoneNumber'] ?? '',
-              firstName: args['firstName'] ?? '',
-              lastName: args['lastName'] ?? '',
-              email: args['email'] ?? '',
-            );
-          }
-          // Fallback for old string-only arguments
+          final args = ModalRoute.of(context)!.settings.arguments as String?;
           return OtpPage(
-            phoneNumber: args as String? ?? '',
-            firstName: '',
+            phoneNumber: args ?? '',
             lastName: '',
+            firstName: '',
             email: '',
           );
         },
         '/homepage': (context) => const HomePage(),
+        '/edit_profile': (context) => const EditProfilePage(),
       },
     );
   }

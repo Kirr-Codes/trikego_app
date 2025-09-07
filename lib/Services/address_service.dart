@@ -3,7 +3,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 /// Service for handling address-related operations
-/// 
+///
 /// Features:
 /// - Reverse geocoding (coordinates to address)
 /// - Formatted address strings for Philippines
@@ -18,12 +18,13 @@ class AddressService {
   final Map<String, String> _addressCache = {};
 
   /// Convert coordinates to readable address
-  /// 
+  ///
   /// Returns formatted address like "123 Main St, Barangay Sample, Quezon City"
   /// Falls back to coordinates if geocoding fails
   Future<String> getAddressFromCoordinates(LatLng coordinates) async {
-    final cacheKey = '${coordinates.latitude.toStringAsFixed(4)},${coordinates.longitude.toStringAsFixed(4)}';
-    
+    final cacheKey =
+        '${coordinates.latitude.toStringAsFixed(4)},${coordinates.longitude.toStringAsFixed(4)}';
+
     // Return cached address if available
     if (_addressCache.containsKey(cacheKey)) {
       return _addressCache[cacheKey]!;
@@ -38,14 +39,14 @@ class AddressService {
       if (placemarks.isNotEmpty) {
         final placemark = placemarks.first;
         final formattedAddress = _formatPhilippinesAddress(placemark);
-        
+
         // Cache the result
         _addressCache[cacheKey] = formattedAddress;
-        
+
         if (kDebugMode) {
           print('📍 Address found: $formattedAddress');
         }
-        
+
         return formattedAddress;
       } else {
         return _fallbackAddress(coordinates);
@@ -82,7 +83,7 @@ class AddressService {
     }
 
     // Province (administrativeArea in Philippines)
-    if (placemark.administrativeArea?.isNotEmpty == true && 
+    if (placemark.administrativeArea?.isNotEmpty == true &&
         placemark.administrativeArea != placemark.locality) {
       parts.add(placemark.administrativeArea!);
     }
@@ -102,7 +103,8 @@ class AddressService {
 
     if (placemark.name?.isNotEmpty == true) parts.add(placemark.name!);
     if (placemark.locality?.isNotEmpty == true) parts.add(placemark.locality!);
-    if (placemark.administrativeArea?.isNotEmpty == true) parts.add(placemark.administrativeArea!);
+    if (placemark.administrativeArea?.isNotEmpty == true)
+      parts.add(placemark.administrativeArea!);
     if (placemark.country?.isNotEmpty == true) parts.add(placemark.country!);
 
     return parts.isNotEmpty ? parts.join(', ') : 'Unknown location';
@@ -111,7 +113,7 @@ class AddressService {
   /// Fallback when geocoding completely fails
   String _fallbackAddress(LatLng coordinates) {
     return 'Lat: ${coordinates.latitude.toStringAsFixed(4)}, '
-           'Lng: ${coordinates.longitude.toStringAsFixed(4)}';
+        'Lng: ${coordinates.longitude.toStringAsFixed(4)}';
   }
 
   /// Get short address (street + barangay only)
