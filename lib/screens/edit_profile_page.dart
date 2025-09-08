@@ -6,6 +6,7 @@ import 'dart:io';
 import '../main.dart' show AppColors;
 import '../Services/auth_service.dart';
 import '../utils/snackbar_utils.dart';
+import '../utils/dialog_utils.dart';
 import 'phone_update_otp_page.dart';
 
 class EditProfilePage extends StatefulWidget {
@@ -296,58 +297,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  /// Show confirmation dialog before updating
-  Future<bool> _showUpdateConfirmation() async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: Text(
-                'Update Profile',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 20,
-                ),
-              ),
-              content: Text(
-                'Are you sure you want to update your profile information?',
-                style: GoogleFonts.inter(fontSize: 16, color: Colors.black87),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: Text(
-                    'Cancel',
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Text(
-                    'Update',
-                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            );
-          },
-        ) ??
-        false;
-  }
-
   /// Handle profile update
   Future<void> _handleUpdate() async {
     if (!_formKey.currentState!.validate()) {
@@ -356,7 +305,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
 
     // Show confirmation dialog
-    final confirmed = await _showUpdateConfirmation();
+    final confirmed = await DialogUtils.showUpdateConfirmationDialog(context);
     if (!confirmed) return;
 
     setState(() => _isLoading = true);
