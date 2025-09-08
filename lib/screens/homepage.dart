@@ -4,9 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../services/location_service.dart';
 import '../services/address_service.dart';
+import '../services/places_service.dart';
+import '../services/route_service.dart';
 import '../widgets/profile_drawer.dart';
 import '../utils/snackbar_utils.dart';
+import '../utils/dialog_utils.dart';
 import '../main.dart' show AppColors;
+import 'destination_search_screen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -25,6 +29,13 @@ class _HomePageState extends State<HomePage> {
   String _currentAddress = 'Getting your location...';
   StreamSubscription<LatLng>? _locationSubscription;
   StreamSubscription<LocationState>? _stateSubscription;
+
+  // Destination and route state
+  PlaceSearchResult? _selectedDestination;
+  RouteResult? _currentRoute;
+  Set<Polyline> _polylines = {};
+  Set<Marker> _destinationMarkers = {};
+  bool _isCalculatingRoute = false;
 
   static const LatLng _defaultLocation = LatLng(14.5995, 120.9842); // Manila
 
@@ -45,11 +56,13 @@ class _HomePageState extends State<HomePage> {
   /// Initialize location service and set up listeners
   Future<void> _initializeLocation() async {
     // Listen to location updates
-    _locationSubscription = _locationService.locationStream.listen((location) async {
+    _locationSubscription = _locationService.locationStream.listen((
+      location,
+    ) async {
       if (mounted) {
         setState(() => _currentPosition = location);
         _updateMapCamera(location);
-        
+
         // Get address for this location
         _updateAddress(location);
       }
@@ -93,20 +106,22 @@ class _HomePageState extends State<HomePage> {
     switch (state) {
       case LocationState.serviceDisabled:
         context.showError(state.message);
-        _showLocationDialog(
-          'Location Services Disabled',
-          'Please enable location services in settings.',
-          'Open Settings',
-          () => _locationService.openLocationSettings(),
+        DialogUtils.showLocationDialog(
+          context,
+          title: 'Location Services Disabled',
+          message: 'Please enable location services in settings.',
+          actionText: 'Open Settings',
+          onAction: () => _locationService.openLocationSettings(),
         );
         break;
       case LocationState.permissionDenied:
         context.showWarning(state.message);
-        _showLocationDialog(
-          'Location Permission Required',
-          'Please allow location access to use this feature.',
-          'App Settings',
-          () => _locationService.openAppSettings(),
+        DialogUtils.showLocationDialog(
+          context,
+          title: 'Location Permission Required',
+          message: 'Please allow location access to use this feature.',
+          actionText: 'App Settings',
+          onAction: () => _locationService.openAppSettings(),
         );
         break;
       case LocationState.error:
@@ -122,50 +137,171 @@ class _HomePageState extends State<HomePage> {
     _mapController?.animateCamera(CameraUpdate.newLatLng(position));
   }
 
-  /// Show location permission dialog
-  void _showLocationDialog(
-    String title,
-    String message,
-    String actionText,
-    VoidCallback onAction,
-  ) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              onAction();
-            },
-            child: Text(actionText),
-          ),
-        ],
+  /// Open destination search screen
+  Future<void> _openDestinationSearch() async {
+    if (_currentPosition == null) {
+      context.showError('Please wait for your location to be detected.');
+      return;
+    }
+
+    final result = await Navigator.push<PlaceSearchResult>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DestinationSearchScreen(
+          currentLatitude: _currentPosition!.latitude,
+          currentLongitude: _currentPosition!.longitude,
+        ),
       ),
     );
+
+    if (result != null) {
+      setState(() {
+        _selectedDestination = result;
+      });
+      await _calculateRoute();
+    }
   }
+
+  /// Calculate route to selected destination
+  Future<void> _calculateRoute() async {
+    if (_currentPosition == null || _selectedDestination == null) return;
+
+    // Check distance limit before calculating route
+    final distance = RouteService.calculateDistance(
+      _currentPosition!,
+      LatLng(_selectedDestination!.latitude, _selectedDestination!.longitude),
+    );
+
+    const double maxDistanceKm = 20.0; // 20km limit
+    const double maxDistanceMeters = maxDistanceKm * 1000;
+
+    if (distance > maxDistanceMeters) {
+      DialogUtils.showDistanceLimitDialog(context, distance, _clearDestination);
+      return;
+    }
+
+    setState(() => _isCalculatingRoute = true);
+
+    try {
+      final route = await RouteService.getRoute(
+        startLatitude: _currentPosition!.latitude,
+        startLongitude: _currentPosition!.longitude,
+        endLatitude: _selectedDestination!.latitude,
+        endLongitude: _selectedDestination!.longitude,
+        avoidHighways: false, // Allow highways for tricycle/car
+        avoidTolls: false, // Allow tolls
+      );
+
+      if (route != null && mounted) {
+        setState(() {
+          _currentRoute = route;
+          _polylines = {
+            Polyline(
+              polylineId: const PolylineId('route'),
+              points: route.points,
+              color: AppColors.primary,
+              width: 5,
+              patterns: [],
+            ),
+          };
+          _destinationMarkers = {
+            Marker(
+              markerId: const MarkerId('destination'),
+              position: LatLng(
+                _selectedDestination!.latitude,
+                _selectedDestination!.longitude,
+              ),
+              icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueRed,
+              ),
+              infoWindow: InfoWindow(
+                title: _selectedDestination!.name,
+                snippet: '${route.distanceText} • ${route.durationText}',
+              ),
+            ),
+          };
+        });
+
+        // Fit camera to show both start and end points
+        _fitCameraToRoute(route.points);
+
+        context.showSuccess('Route calculated successfully!');
+      } else {
+        if (mounted) {
+          context.showError('Unable to calculate route. Please try again.');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showError(
+          'Failed to calculate route. Please check your internet connection.',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCalculatingRoute = false);
+      }
+    }
+  }
+
+  /// Fit camera to show the entire route
+  void _fitCameraToRoute(List<LatLng> points) {
+    if (points.isEmpty) return;
+
+    double minLat = points.first.latitude;
+    double maxLat = points.first.latitude;
+    double minLng = points.first.longitude;
+    double maxLng = points.first.longitude;
+
+    for (final point in points) {
+      minLat = minLat < point.latitude ? minLat : point.latitude;
+      maxLat = maxLat > point.latitude ? maxLat : point.latitude;
+      minLng = minLng < point.longitude ? minLng : point.longitude;
+      maxLng = maxLng > point.longitude ? maxLng : point.longitude;
+    }
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(minLat, minLng),
+      northeast: LatLng(maxLat, maxLng),
+    );
+
+    _mapController?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100.0));
+  }
+
+  /// Clear destination and route
+  void _clearDestination() {
+    setState(() {
+      _selectedDestination = null;
+      _currentRoute = null;
+      _polylines = {};
+      _destinationMarkers = {};
+    });
+  }
+
 
   /// Build map markers
   Set<Marker> _buildMarkers() {
-    if (_currentPosition == null) return {};
+    final markers = <Marker>{};
 
-    return {
-      Marker(
-        markerId: const MarkerId('user_location'),
-        position: _currentPosition!,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-        infoWindow: const InfoWindow(
-          title: 'Your Location',
-          snippet: 'Current position',
+    // Add user location marker
+    if (_currentPosition != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('user_location'),
+          position: _currentPosition!,
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          infoWindow: const InfoWindow(
+            title: 'Your Location',
+            snippet: 'Current position',
+          ),
         ),
-      ),
-    };
+      );
+    }
+
+    // Add destination markers
+    markers.addAll(_destinationMarkers);
+
+    return markers;
   }
 
   @override
@@ -181,11 +317,12 @@ class _HomePageState extends State<HomePage> {
             },
             initialCameraPosition: CameraPosition(
               target: _currentPosition ?? _defaultLocation,
-                zoom: 15,
+              zoom: 15,
             ),
             myLocationEnabled: _locationState.isActive,
             myLocationButtonEnabled: false,
             markers: _buildMarkers(),
+            polylines: _polylines,
           ),
 
           // Top overlay controls (menu + notifications)
@@ -243,13 +380,42 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            'Where are you going?',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Where are you going?',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.speed, size: 14, color: Colors.blue.shade600),
+                    const SizedBox(width: 4),
+                    Text(
+                      '20km limit',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           const Text(
@@ -280,137 +446,111 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 6),
           _locationField(
             hintText: 'Enter your destination',
+            displayText: _selectedDestination?.name,
             icon: Icons.location_on_outlined,
             iconColor: Colors.redAccent,
+            onTap: _openDestinationSearch,
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            width: 300,
-            child: ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                elevation: 2,
-              ),
-              child: const Text(
-                'Choose this destination',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Show full address dialog when location field is tapped
-  void _showFullAddressDialog(String? fullAddress) {
-    if (fullAddress == null) return;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            Icon(
-              Icons.location_pin,
-              color: Colors.green.shade600,
-              size: 24,
-            ),
-            const SizedBox(width: 8),
-            const Expanded(
-              child: Text(
-                'Your Current Location',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+          if (_selectedDestination != null && _currentRoute != null) ...[
+            // Route information
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.green.shade200),
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.blue.shade200),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
+                  Icon(Icons.route, color: Colors.blue.shade600, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Route to ${_selectedDestination!.name}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Live Location',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.green,
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_currentRoute!.distanceText} • ${_currentRoute!.durationText}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  SelectableText(
-                    fullAddress,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                      height: 1.4,
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
-            Text(
-              'This is your real-time GPS location. It updates automatically as you move.',
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey.shade600,
-                height: 1.3,
+            // Clear destination button
+            SizedBox(
+              width: 300,
+              child: ElevatedButton(
+                onPressed: _clearDestination,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade600,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  elevation: 2,
+                ),
+                child: const Text(
+                  'Clear Destination',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ] else ...[
+            // Choose destination button
+            SizedBox(
+              width: 300,
+              child: ElevatedButton(
+                onPressed: _isCalculatingRoute ? null : _openDestinationSearch,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  elevation: 2,
+                ),
+                child: _isCalculatingRoute
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        'Choose Destination',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
               ),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Close',
-              style: TextStyle(
-                color: Colors.green.shade600,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
+
 
   Widget _locationField({
     required String hintText,
@@ -418,39 +558,42 @@ class _HomePageState extends State<HomePage> {
     required IconData icon,
     required Color iconColor,
     bool isCurrentLocation = false,
+    VoidCallback? onTap,
   }) {
     return GestureDetector(
-      onTap: isCurrentLocation && displayText != null 
-        ? () => _showFullAddressDialog(displayText)
-        : null,
+      onTap:
+          onTap ??
+          (isCurrentLocation && displayText != null
+              ? () => DialogUtils.showFullAddressDialog(context, displayText)
+              : null),
       child: Container(
         decoration: BoxDecoration(
-          color: isCurrentLocation ? Colors.green.shade50 : const Color(0xFFF2F2F4),
+          color: isCurrentLocation
+              ? Colors.green.shade50
+              : const Color(0xFFF2F2F4),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isCurrentLocation 
-              ? Colors.green.shade200 
-              : Colors.black.withOpacity(0.08),
+            color: isCurrentLocation
+                ? Colors.green.shade200
+                : Colors.black.withOpacity(0.08),
           ),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         child: Row(
           children: [
-            Icon(
-              icon, 
-              color: iconColor,
-              size: 20,
-            ),
+            Icon(icon, color: iconColor, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 displayText ?? hintText,
                 style: TextStyle(
                   fontSize: 14,
-                  color: displayText != null 
-                    ? Colors.black87 
-                    : Colors.black.withOpacity(0.4),
-                  fontWeight: displayText != null ? FontWeight.w500 : FontWeight.w400,
+                  color: displayText != null
+                      ? Colors.black87
+                      : Colors.black.withOpacity(0.4),
+                  fontWeight: displayText != null
+                      ? FontWeight.w500
+                      : FontWeight.w400,
                 ),
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
