@@ -115,8 +115,8 @@ class Passenger {
     final data = doc.data() as Map<String, dynamic>;
     return Passenger(
       userId: doc.id,
-      firstName: data['fname'] ?? '',
-      lastName: data['name'] ?? '',
+      firstName: data['firstName'] ?? '',
+      lastName: data['lastName'] ?? '',
       createdAt: (data['createdAt'] as Timestamp).toDate(),
       updatedAt: (data['updatedAt'] as Timestamp).toDate(),
       isActive: data['isActive'] ?? true,
