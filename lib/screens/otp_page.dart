@@ -25,24 +25,22 @@ class OtpPage extends StatefulWidget {
 }
 
 class _OtpPageState extends State<OtpPage> {
-  final TextEditingController codeController = TextEditingController();
+  final TextEditingController _codeController = TextEditingController();
   final AuthService _authService = AuthService();
 
-  static const int initialSeconds = 60;
-  late int secondsRemaining;
+  static const int _initialSeconds = 60;
+  int _secondsRemaining = _initialSeconds;
   Timer? _timer;
-  bool isVerifying = false;
-  bool isResending = false;
-  StreamSubscription<AuthState>? _authStateSubscription;
+  bool _isVerifying = false;
+  bool _isResending = false;
 
   Future<void> _resendOtp() async {
-    if (isResending || secondsRemaining > 0) return;
+    if (_isResending || _secondsRemaining > 0) return;
 
-    setState(() => isResending = true);
+    setState(() => _isResending = true);
 
     try {
       final result = await _authService.resendOtp();
-
       if (!mounted) return;
 
       if (result.isSuccess) {
@@ -57,7 +55,7 @@ class _OtpPageState extends State<OtpPage> {
       }
     } finally {
       if (mounted) {
-        setState(() => isResending = false);
+        setState(() => _isResending = false);
       }
     }
   }
@@ -65,33 +63,19 @@ class _OtpPageState extends State<OtpPage> {
   @override
   void initState() {
     super.initState();
-    secondsRemaining = initialSeconds;
     _startTimer();
-    _setupAuthStateListener();
-  }
-
-  void _setupAuthStateListener() {
-    _authStateSubscription = _authService.authStateStream.listen((state) {
-      if (!mounted) return;
-
-      // Handle authentication state changes
-      // Note: We'll handle success/error in the verify method directly
-      // This listener is for future enhancements
-    });
   }
 
   void _startTimer() {
     _timer?.cancel();
-    setState(() {
-      secondsRemaining = initialSeconds;
-    });
+    setState(() => _secondsRemaining = _initialSeconds);
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;
 
       setState(() {
-        if (secondsRemaining > 0) {
-          secondsRemaining--;
+        if (_secondsRemaining > 0) {
+          _secondsRemaining--;
         } else {
           timer.cancel();
         }
@@ -99,33 +83,56 @@ class _OtpPageState extends State<OtpPage> {
     });
   }
 
+  Future<void> _registerUserInFirestore() async {
+    try {
+        
+      final result = await _authService.registerUserInFirestore(
+        firstName: widget.firstName,
+        lastName: widget.lastName,
+        email: widget.email,
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => AuthResult.error('Registration timeout. Please try again.'),
+      );
+
+      if (!mounted) return;
+
+      if (result.isSuccess) {
+        context.showSuccess('Registration completed successfully!');
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/homepage',
+          (route) => false,
+        );
+      } else {
+        context.showError('Registration failed: ${result.message}');
+        await _authService.signOut();
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showError('Registration failed: ${e.toString()}');
+        await _authService.signOut();
+      }
+    }
+  }
+
   Future<void> _verifyCode() async {
-    final code = codeController.text.trim();
+    final code = _codeController.text.trim();
 
     if (code.length != 6) {
       context.showError('Please enter a valid 6-digit OTP code.');
       return;
     }
 
-    setState(() => isVerifying = true);
+    setState(() => _isVerifying = true);
 
     try {
       final result = await _authService.verifyOtp(code);
-
       if (!mounted) return;
 
-      if (result.isSuccess) {
-        if (result.hasUser) {
-          // User authenticated successfully
-          context.showSuccess(result.message);
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            '/homepage',
-            (route) => false,
-          );
-        }
+      if (result.isSuccess && result.hasUser) {
+        await _registerUserInFirestore();
       } else {
-        // Show error message
         context.showError(result.message);
       }
     } catch (e) {
@@ -134,7 +141,7 @@ class _OtpPageState extends State<OtpPage> {
       }
     } finally {
       if (mounted) {
-        setState(() => isVerifying = false);
+        setState(() => _isVerifying = false);
       }
     }
   }
@@ -142,21 +149,20 @@ class _OtpPageState extends State<OtpPage> {
   @override
   void dispose() {
     _timer?.cancel();
-    _authStateSubscription?.cancel();
-    codeController.dispose();
+    _codeController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final defaultPinTheme = PinTheme(
+    const defaultPinTheme = PinTheme(
       width: 58,
       height: 58,
-      textStyle: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w600),
+      textStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F2F4),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.12)),
+        color: Color(0xFFF2F2F4),
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+        border: Border.fromBorderSide(BorderSide(color: Color(0x1F000000))),
       ),
     );
 
@@ -191,7 +197,7 @@ class _OtpPageState extends State<OtpPage> {
               ),
               const SizedBox(height: 20),
               Pinput(
-                controller: codeController,
+                controller: _codeController,
                 length: 6,
                 defaultPinTheme: defaultPinTheme,
                 focusedPinTheme: defaultPinTheme.copyDecorationWith(
@@ -201,14 +207,12 @@ class _OtpPageState extends State<OtpPage> {
               ),
               const SizedBox(height: 24),
               GestureDetector(
-                onTap: secondsRemaining == 0 && !isResending
-                    ? _resendOtp
-                    : null,
+                onTap: _secondsRemaining == 0 && !_isResending ? _resendOtp : null,
                 behavior: HitTestBehavior.opaque,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (isResending)
+                    if (_isResending)
                       const SizedBox(
                         width: 16,
                         height: 16,
@@ -217,16 +221,16 @@ class _OtpPageState extends State<OtpPage> {
                           color: AppColors.primary,
                         ),
                       ),
-                    if (isResending) const SizedBox(width: 8),
+                    if (_isResending) const SizedBox(width: 8),
                     Text(
-                      isResending ? 'Resending...' : 'Resend code',
+                      _isResending ? 'Resending...' : 'Resend code',
                       style: GoogleFonts.inter(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
-                        color: (secondsRemaining == 0 && !isResending)
+                        color: (_secondsRemaining == 0 && !_isResending)
                             ? AppColors.primary
                             : Colors.black45,
-                        decoration: (secondsRemaining == 0 && !isResending)
+                        decoration: (_secondsRemaining == 0 && !_isResending)
                             ? TextDecoration.underline
                             : TextDecoration.none,
                       ),
@@ -235,9 +239,9 @@ class _OtpPageState extends State<OtpPage> {
                 ),
               ),
               const SizedBox(height: 4),
-              if (secondsRemaining > 0)
+              if (_secondsRemaining > 0)
                 Text(
-                  'Request new code in 00:${secondsRemaining.toString().padLeft(2, '0')}',
+                  'Request new code in 00:${_secondsRemaining.toString().padLeft(2, '0')}',
                   style: GoogleFonts.inter(fontSize: 18, color: Colors.black45),
                 ),
               const Spacer(),
@@ -246,7 +250,7 @@ class _OtpPageState extends State<OtpPage> {
                 child: SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: isVerifying ? null : _verifyCode,
+                    onPressed: _isVerifying ? null : _verifyCode,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
@@ -256,7 +260,7 @@ class _OtpPageState extends State<OtpPage> {
                       ),
                       elevation: 3,
                     ),
-                    child: isVerifying
+                    child: _isVerifying
                         ? const CircularProgressIndicator(color: Colors.white)
                         : Text(
                             'VERIFY',
@@ -274,4 +278,5 @@ class _OtpPageState extends State<OtpPage> {
       ),
     );
   }
+
 }

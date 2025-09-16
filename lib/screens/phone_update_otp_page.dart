@@ -19,41 +19,38 @@ class PhoneUpdateOtpPage extends StatefulWidget {
 }
 
 class _PhoneUpdateOtpPageState extends State<PhoneUpdateOtpPage> {
-  final TextEditingController codeController = TextEditingController();
+  final TextEditingController _codeController = TextEditingController();
   final AuthService _authService = AuthService();
 
-  static const int initialSeconds = 60;
-  late int secondsRemaining;
+  static const int _initialSeconds = 60;
+  int _secondsRemaining = _initialSeconds;
   Timer? _timer;
-  bool isVerifying = false;
-  bool isResending = false;
+  bool _isVerifying = false;
+  bool _isResending = false;
 
   @override
   void initState() {
     super.initState();
-    secondsRemaining = initialSeconds;
     _startTimer();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    codeController.dispose();
+    _codeController.dispose();
     super.dispose();
   }
 
   void _startTimer() {
     _timer?.cancel();
-    setState(() {
-      secondsRemaining = initialSeconds;
-    });
+    setState(() => _secondsRemaining = _initialSeconds);
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;
 
       setState(() {
-        if (secondsRemaining > 0) {
-          secondsRemaining--;
+        if (_secondsRemaining > 0) {
+          _secondsRemaining--;
         } else {
           timer.cancel();
         }
@@ -62,15 +59,14 @@ class _PhoneUpdateOtpPageState extends State<PhoneUpdateOtpPage> {
   }
 
   Future<void> _resendOtp() async {
-    if (isResending || secondsRemaining > 0) return;
+    if (_isResending || _secondsRemaining > 0) return;
 
-    setState(() => isResending = true);
+    setState(() => _isResending = true);
 
     try {
       final result = await _authService.startPhoneNumberUpdate(
         newPhoneNumber: widget.newPhoneNumber,
       );
-
       if (!mounted) return;
 
       if (result.isSuccess) {
@@ -85,29 +81,28 @@ class _PhoneUpdateOtpPageState extends State<PhoneUpdateOtpPage> {
       }
     } finally {
       if (mounted) {
-        setState(() => isResending = false);
+        setState(() => _isResending = false);
       }
     }
   }
 
   Future<void> _verifyCode() async {
-    final code = codeController.text.trim();
+    final code = _codeController.text.trim();
 
     if (code.length != 6) {
       context.showError('Please enter a valid 6-digit OTP code.');
       return;
     }
 
-    setState(() => isVerifying = true);
+    setState(() => _isVerifying = true);
 
     try {
       final result = await _authService.verifyPhoneNumberUpdateOtp(code);
-
       if (!mounted) return;
 
       if (result.isSuccess) {
         context.showSuccess(result.message);
-        Navigator.pop(context, true); // Return true to indicate success
+        Navigator.pop(context, true);
       } else {
         context.showError(result.message);
       }
@@ -117,21 +112,21 @@ class _PhoneUpdateOtpPageState extends State<PhoneUpdateOtpPage> {
       }
     } finally {
       if (mounted) {
-        setState(() => isVerifying = false);
+        setState(() => _isVerifying = false);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final defaultPinTheme = PinTheme(
+    const defaultPinTheme = PinTheme(
       width: 58,
       height: 58,
-      textStyle: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w600),
+      textStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F2F4),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.12)),
+        color: Color(0xFFF2F2F4),
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+        border: Border.fromBorderSide(BorderSide(color: Color(0x1F000000))),
       ),
     );
 
@@ -166,7 +161,7 @@ class _PhoneUpdateOtpPageState extends State<PhoneUpdateOtpPage> {
               ),
               const SizedBox(height: 20),
               Pinput(
-                controller: codeController,
+                controller: _codeController,
                 length: 6,
                 defaultPinTheme: defaultPinTheme,
                 focusedPinTheme: defaultPinTheme.copyDecorationWith(
@@ -177,12 +172,12 @@ class _PhoneUpdateOtpPageState extends State<PhoneUpdateOtpPage> {
               ),
               const SizedBox(height: 24),
               GestureDetector(
-                onTap: secondsRemaining == 0 && !isResending ? _resendOtp : null,
+                onTap: _secondsRemaining == 0 && !_isResending ? _resendOtp : null,
                 behavior: HitTestBehavior.opaque,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (isResending)
+                    if (_isResending)
                       const SizedBox(
                         width: 16,
                         height: 16,
@@ -191,16 +186,16 @@ class _PhoneUpdateOtpPageState extends State<PhoneUpdateOtpPage> {
                           color: AppColors.primary,
                         ),
                       ),
-                    if (isResending) const SizedBox(width: 8),
+                    if (_isResending) const SizedBox(width: 8),
                     Text(
-                      isResending ? 'Resending...' : 'Resend code',
+                      _isResending ? 'Resending...' : 'Resend code',
                       style: GoogleFonts.inter(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
-                        color: (secondsRemaining == 0 && !isResending)
+                        color: (_secondsRemaining == 0 && !_isResending)
                             ? AppColors.primary
                             : Colors.black45,
-                        decoration: (secondsRemaining == 0 && !isResending)
+                        decoration: (_secondsRemaining == 0 && !_isResending)
                             ? TextDecoration.underline
                             : TextDecoration.none,
                       ),
@@ -209,9 +204,9 @@ class _PhoneUpdateOtpPageState extends State<PhoneUpdateOtpPage> {
                 ),
               ),
               const SizedBox(height: 4),
-              if (secondsRemaining > 0)
+              if (_secondsRemaining > 0)
                 Text(
-                  'Request new code in 00:${secondsRemaining.toString().padLeft(2, '0')}',
+                  'Request new code in 00:${_secondsRemaining.toString().padLeft(2, '0')}',
                   style: GoogleFonts.inter(fontSize: 18, color: Colors.black45),
                 ),
               const Spacer(),
@@ -220,7 +215,7 @@ class _PhoneUpdateOtpPageState extends State<PhoneUpdateOtpPage> {
                 child: SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: isVerifying ? null : _verifyCode,
+                    onPressed: _isVerifying ? null : _verifyCode,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
@@ -230,7 +225,7 @@ class _PhoneUpdateOtpPageState extends State<PhoneUpdateOtpPage> {
                       ),
                       elevation: 3,
                     ),
-                    child: isVerifying
+                    child: _isVerifying
                         ? const CircularProgressIndicator(color: Colors.white)
                         : Text(
                             'VERIFY',

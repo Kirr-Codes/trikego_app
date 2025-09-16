@@ -18,7 +18,8 @@ class EditProfilePage extends StatefulWidget {
 
 class _EditProfilePageState extends State<EditProfilePage> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _mobileController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final AuthService _authService = AuthService();
@@ -26,7 +27,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
   bool _isLoading = false;
 
   // Original values to track changes
-  String _originalName = '';
+  String _originalFirstName = '';
+  String _originalLastName = '';
   String _originalPhone = '';
   String _originalEmail = '';
 
@@ -35,7 +37,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
   File? _selectedImageFile;
 
   // Field editing states
-  bool _isEditingName = false;
+  bool _isEditingFirstName = false;
+  bool _isEditingLastName = false;
   bool _isEditingPhone = false;
   bool _isEditingEmail = false;
 
@@ -53,54 +56,59 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   @override
   void dispose() {
-    _nameController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     _mobileController.dispose();
     _emailController.dispose();
     super.dispose();
   }
 
-  /// Load current user profile data
+  /// Load current user profile data from Firestore
   void _loadUserProfile() {
-    final user = _authService.currentUser;
-    if (user != null) {
-      // Load display name if available
-      final displayName = user.displayName ?? '';
-      _nameController.text = displayName;
-      _originalName = displayName;
+    final userData = _authService.currentUserData;
+    if (userData != null) {
+      // Load first and last names from passenger data
+      if (userData.passenger != null) {
+        _firstNameController.text = userData.passenger!.firstName;
+        _lastNameController.text = userData.passenger!.lastName;
+        _originalFirstName = userData.passenger!.firstName;
+        _originalLastName = userData.passenger!.lastName;
+      }
 
-      // Load phone number if available
-      if (user.phoneNumber != null && user.phoneNumber!.isNotEmpty) {
+      // Load phone number from user data
+      final phoneNumber = userData.user.phoneNum;
+      if (phoneNumber.isNotEmpty) {
         // Remove country code for display
-        String phoneNumber = user.phoneNumber!;
         if (phoneNumber.startsWith('+63')) {
           final phoneWithoutCode = phoneNumber.substring(3);
           _mobileController.text = phoneWithoutCode;
           _originalPhone = phoneWithoutCode;
+        } else {
+          _mobileController.text = phoneNumber;
+          _originalPhone = phoneNumber;
         }
       }
 
-      // Load email - always load the email from Firebase Auth
-      final email = user.email ?? '';
+      // Load email from user data
+      final email = userData.user.email;
       _emailController.text = email;
       _originalEmail = email;
 
-      // Debug print to check email loading
-      print('Debug: User email: ${user.email}');
-      print('Debug: Email controller text: ${_emailController.text}');
-
-      // Load profile photo URL if available
-      _profilePhotoUrl = user.photoURL;
-    } else {
-      print('Debug: No current user found');
+      // Load profile photo URL from Firebase Auth
+      final user = _authService.currentUser;
+      if (user != null) {
+        _profilePhotoUrl = user.photoURL;
+      }
     }
   }
 
   /// Check if any profile information has changed
   bool _hasChanges() {
-    return _nameController.text.trim() != _originalName ||
-           _mobileController.text.trim() != _originalPhone ||
-           _emailController.text.trim() != _originalEmail ||
-           _selectedImageFile != null;
+    return _firstNameController.text.trim() != _originalFirstName ||
+        _lastNameController.text.trim() != _originalLastName ||
+        _mobileController.text.trim() != _originalPhone ||
+        _emailController.text.trim() != _originalEmail ||
+        _selectedImageFile != null;
   }
 
   /// Check if phone number has changed
@@ -113,7 +121,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     if (!_hasPhoneNumberChanged()) return true; // No phone change needed
 
     final newPhoneNumber = '+63${_mobileController.text.trim()}';
-    
+
     try {
       // Start phone number update verification
       final result = await _authService.startPhoneNumberUpdate(
@@ -127,9 +135,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
         final success = await Navigator.push<bool>(
           context,
           MaterialPageRoute(
-            builder: (context) => PhoneUpdateOtpPage(
-              newPhoneNumber: newPhoneNumber,
-            ),
+            builder: (context) =>
+                PhoneUpdateOtpPage(newPhoneNumber: newPhoneNumber),
           ),
         );
 
@@ -147,7 +154,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
       }
     } catch (e) {
       if (mounted) {
-        context.showError('Failed to start phone number verification. Please try again.');
+        context.showError(
+          'Failed to start phone number verification. Please try again.',
+        );
       }
       return false;
     }
@@ -321,17 +330,26 @@ class _EditProfilePageState extends State<EditProfilePage> {
         }
       }
 
-      // Update other profile information
+      // Get first and last names from separate fields
+      final firstName = _firstNameController.text.trim();
+      final lastName = _lastNameController.text.trim();
+      final fullName = '$firstName $lastName'.trim();
+
+      // Update profile information in both Firebase Auth and Firestore
       final result = await _authService.updateProfile(
-        displayName: _nameController.text.trim(),
+        displayName: fullName,
         photoURL: _profilePhotoUrl,
+        firstName: firstName,
+        lastName: lastName,
+        email: _emailController.text.trim(),
       );
 
       if (!mounted) return;
 
       if (result.isSuccess) {
         // Update original values after successful update
-        _originalName = _nameController.text.trim();
+        _originalFirstName = _firstNameController.text.trim();
+        _originalLastName = _lastNameController.text.trim();
         _originalEmail = _emailController.text.trim();
 
         context.showSuccess('Profile updated successfully!');
@@ -492,7 +510,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
   /// Exit edit mode for all fields
   void _exitEditMode() {
     setState(() {
-      _isEditingName = false;
+      _isEditingFirstName = false;
+      _isEditingLastName = false;
       _isEditingPhone = false;
       _isEditingEmail = false;
     });
@@ -603,24 +622,24 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           ),
                         ),
 
-                        // Name Field
+                        // First Name Field
                         TextFormField(
-                          controller: _nameController,
-                          readOnly: !_isEditingName,
+                          controller: _firstNameController,
+                          readOnly: !_isEditingFirstName,
                           decoration: _inputDecoration(
-                            'Name',
-                            isReadOnly: !_isEditingName,
+                            'First Name',
+                            isReadOnly: !_isEditingFirstName,
                           ),
                           style: GoogleFonts.inter(
                             fontSize: 16,
-                            color: _isEditingName
+                            color: _isEditingFirstName
                                 ? Colors.black
                                 : Colors.grey.shade700,
                           ),
-                          onTap: !_isEditingName
+                          onTap: !_isEditingFirstName
                               ? () {
                                   setState(() {
-                                    _isEditingName = true;
+                                    _isEditingFirstName = true;
                                   });
                                 }
                               : null,
@@ -629,15 +648,56 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           ), // Trigger rebuild to update button state
                           onFieldSubmitted: (value) {
                             setState(() {
-                              _isEditingName = false;
+                              _isEditingFirstName = false;
                             });
                           },
                           validator: (value) {
                             if (value == null || value.trim().isEmpty) {
-                              return 'Please enter your name';
+                              return 'Please enter your first name';
                             }
                             if (value.trim().length < 2) {
-                              return 'Name must be at least 2 characters';
+                              return 'First name must be at least 2 characters';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Last Name Field
+                        TextFormField(
+                          controller: _lastNameController,
+                          readOnly: !_isEditingLastName,
+                          decoration: _inputDecoration(
+                            'Last Name',
+                            isReadOnly: !_isEditingLastName,
+                          ),
+                          style: GoogleFonts.inter(
+                            fontSize: 16,
+                            color: _isEditingLastName
+                                ? Colors.black
+                                : Colors.grey.shade700,
+                          ),
+                          onTap: !_isEditingLastName
+                              ? () {
+                                  setState(() {
+                                    _isEditingLastName = true;
+                                  });
+                                }
+                              : null,
+                          onChanged: (value) => setState(
+                            () {},
+                          ), // Trigger rebuild to update button state
+                          onFieldSubmitted: (value) {
+                            setState(() {
+                              _isEditingLastName = false;
+                            });
+                          },
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Please enter your last name';
+                            }
+                            if (value.trim().length < 2) {
+                              return 'Last name must be at least 2 characters';
                             }
                             return null;
                           },

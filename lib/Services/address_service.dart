@@ -103,8 +103,9 @@ class AddressService {
 
     if (placemark.name?.isNotEmpty == true) parts.add(placemark.name!);
     if (placemark.locality?.isNotEmpty == true) parts.add(placemark.locality!);
-    if (placemark.administrativeArea?.isNotEmpty == true)
+    if (placemark.administrativeArea?.isNotEmpty == true) {
       parts.add(placemark.administrativeArea!);
+    }
     if (placemark.country?.isNotEmpty == true) parts.add(placemark.country!);
 
     return parts.isNotEmpty ? parts.join(', ') : 'Unknown location';

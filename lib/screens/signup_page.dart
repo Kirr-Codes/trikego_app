@@ -17,65 +17,75 @@ class SignUpPage extends StatefulWidget {
 
 class _SignUpPageState extends State<SignUpPage> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  final TextEditingController firstNameController = TextEditingController();
-  final TextEditingController lastNameController = TextEditingController();
-  final TextEditingController mobileController = TextEditingController();
-  final TextEditingController emailController = TextEditingController();
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
+  final TextEditingController _mobileController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
 
   final AuthService _authService = AuthService();
   String _completePhoneNumber = '';
-  bool isLoading = false;
-  bool agreedToTerms = false;
+  bool _isLoading = false;
+  bool _agreedToTerms = false;
 
   Future<void> _handleSignUp() async {
-    // Validate form and terms agreement
     if (!_formKey.currentState!.validate()) {
       context.showError('Please fill all fields correctly.');
       return;
     }
 
-    if (!agreedToTerms) {
+    if (!_agreedToTerms) {
       context.showError('Please agree to the Terms and Conditions.');
       return;
     }
 
-    // Validate phone number
     if (_completePhoneNumber.isEmpty) {
       context.showError('Please enter a valid phone number.');
       return;
     }
 
-    setState(() => isLoading = true);
+    setState(() => _isLoading = true);
 
     try {
-      // Create user profile
+      final phoneExists = await _authService.checkPhoneNumberExists(_completePhoneNumber);
+      if (!mounted) return;
+
+      if (phoneExists) {
+        context.showError('This phone number is already registered. Please use a different number or sign in instead.');
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final emailExists = await _authService.checkEmailExists(_emailController.text.trim());
+      if (!mounted) return;
+
+      if (emailExists) {
+        context.showError('This email is already registered. Please use a different email or sign in instead.');
+        setState(() => _isLoading = false);
+        return;
+      }
+
       final userProfile = UserProfile(
-        firstName: firstNameController.text.trim(),
-        lastName: lastNameController.text.trim(),
-        email: emailController.text.trim(),
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+        email: _emailController.text.trim(),
         phoneNumber: _completePhoneNumber,
       );
 
-      // Start phone authentication
       final result = await _authService.startPhoneAuth(
         phoneNumber: _completePhoneNumber,
         userProfile: userProfile,
       );
-
       if (!mounted) return;
 
       if (result.isSuccess) {
         if (result.hasUser) {
-          // Auto-verification completed
           context.showSuccess(result.message);
           _navigateToHomeScreen();
         } else if (result.isOtpSent) {
-          // OTP sent, navigate to verification screen
           context.showSMS(result.message);
           _navigateToOTPScreen();
         }
       } else {
-        // Show error message
         context.showError(result.message);
       }
     } catch (e) {
@@ -84,7 +94,7 @@ class _SignUpPageState extends State<SignUpPage> {
       }
     } finally {
       if (mounted) {
-        setState(() => isLoading = false);
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -95,9 +105,9 @@ class _SignUpPageState extends State<SignUpPage> {
       MaterialPageRoute(
         builder: (context) => OtpPage(
           phoneNumber: _completePhoneNumber,
-          firstName: firstNameController.text.trim(),
-          lastName: lastNameController.text.trim(),
-          email: emailController.text.trim(),
+          firstName: _firstNameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          email: _emailController.text.trim(),
         ),
       ),
     );
@@ -109,10 +119,10 @@ class _SignUpPageState extends State<SignUpPage> {
 
   @override
   void dispose() {
-    firstNameController.dispose();
-    lastNameController.dispose();
-    mobileController.dispose();
-    emailController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _mobileController.dispose();
+    _emailController.dispose();
     super.dispose();
   }
 
@@ -140,7 +150,7 @@ class _SignUpPageState extends State<SignUpPage> {
 
   Widget _mobileField() {
     return IntlPhoneField(
-      controller: mobileController,
+      controller: _mobileController,
       initialCountryCode: 'PH',
       countries: const [
         Country(
@@ -159,13 +169,7 @@ class _SignUpPageState extends State<SignUpPage> {
       style: GoogleFonts.inter(fontSize: 16),
       dropdownTextStyle: GoogleFonts.inter(fontSize: 16),
       flagsButtonPadding: const EdgeInsets.only(left: 8),
-
-      onChanged: (phone) {
-        setState(() {
-          // Update complete phone number with country code
-          _completePhoneNumber = phone.completeNumber;
-        });
-      },
+      onChanged: (phone) => setState(() => _completePhoneNumber = phone.completeNumber),
     );
   }
 
@@ -190,7 +194,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Welcome to TrikeGO!',
+                    'Sign Up',
                     style: GoogleFonts.inter(
                       fontSize: 32,
                       fontWeight: FontWeight.w800,
@@ -199,16 +203,16 @@ class _SignUpPageState extends State<SignUpPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Sign Up',
+                    'Create your account',
                     style: GoogleFonts.inter(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
                     ),
                   ),
                   const SizedBox(height: 24),
                   TextFormField(
-                    controller: firstNameController,
+                    controller: _firstNameController,
                     textInputAction: TextInputAction.next,
                     decoration: _inputDecoration('First Name'),
                     style: GoogleFonts.inter(fontSize: 16),
@@ -224,7 +228,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
-                    controller: lastNameController,
+                    controller: _lastNameController,
                     textInputAction: TextInputAction.next,
                     decoration: _inputDecoration('Last Name'),
                     style: GoogleFonts.inter(fontSize: 16),
@@ -242,7 +246,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   _mobileField(),
                   const SizedBox(height: 16),
                   TextFormField(
-                    controller: emailController,
+                    controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.done,
                     decoration: _inputDecoration('Email'),
@@ -268,9 +272,9 @@ class _SignUpPageState extends State<SignUpPage> {
                         height: 24,
                         width: 24,
                         child: Checkbox.adaptive(
-                          value: agreedToTerms,
+                          value: _agreedToTerms,
                           onChanged: (v) =>
-                              setState(() => agreedToTerms = v ?? false),
+                              setState(() => _agreedToTerms = v ?? false),
                           activeColor: AppColors.primary,
                         ),
                       ),
@@ -309,7 +313,7 @@ class _SignUpPageState extends State<SignUpPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 100),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
@@ -324,7 +328,7 @@ class _SignUpPageState extends State<SignUpPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: isLoading || !agreedToTerms ? null : _handleSignUp,
+                onPressed: _isLoading || !_agreedToTerms ? null : _handleSignUp,
 
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
@@ -335,7 +339,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   ),
                   elevation: 3,
                 ),
-                child: isLoading
+                child: _isLoading
                     ? const SizedBox(
                         width: 20,
                         height: 20,

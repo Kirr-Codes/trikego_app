@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:intl_phone_field/countries.dart';
 import '../main.dart' show AppColors;
+import '../Services/auth_service.dart';
+import '../utils/snackbar_utils.dart';
 
 class SignInPage extends StatefulWidget {
   const SignInPage({super.key});
@@ -14,35 +16,115 @@ class SignInPage extends StatefulWidget {
 }
 
 class _SignInPageState extends State<SignInPage> {
-  final TextEditingController phoneController = TextEditingController();
-  final TextEditingController smsCodeController = TextEditingController();
-  String completePhoneNumber = '';
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _smsCodeController = TextEditingController();
+  final AuthService _authService = AuthService();
+  String _completePhoneNumber = '';
 
-  static const int initialSeconds = 60;
-  int secondsRemaining = 0;
+  static const int _initialSeconds = 60;
+  int _secondsRemaining = 0;
   Timer? _timer;
+  
+  bool _isSendingOtp = false;
+  bool _isVerifying = false;
 
   @override
   void dispose() {
     _timer?.cancel();
-    phoneController.dispose();
-    smsCodeController.dispose();
+    _phoneController.dispose();
+    _smsCodeController.dispose();
     super.dispose();
   }
 
   void _startTimer() {
     _timer?.cancel();
-    setState(() => secondsRemaining = initialSeconds);
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+    setState(() => _secondsRemaining = _initialSeconds);
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;
       setState(() {
-        if (secondsRemaining > 0) {
-          secondsRemaining--;
+        if (_secondsRemaining > 0) {
+          _secondsRemaining--;
         } else {
-          t.cancel();
+          timer.cancel();
         }
       });
     });
+  }
+
+  Future<void> _sendOtp() async {
+    if (_completePhoneNumber.isEmpty) {
+      context.showError('Please enter a valid phone number');
+      return;
+    }
+
+    setState(() => _isSendingOtp = true);
+
+    try {
+      
+      final phoneExists = await _authService.checkPhoneNumberExists(_completePhoneNumber);
+      if (!mounted) return;
+
+      if (!phoneExists) {
+        context.showError('This phone number is not registered. Please sign up first.');
+        setState(() => _isSendingOtp = false);
+        return;
+      }
+      
+      final result = await _authService.startPhoneAuth(
+        phoneNumber: _completePhoneNumber,
+      );
+      if (!mounted) return;
+
+      if (result.isSuccess) {
+        context.showSMS('OTP sent to $_completePhoneNumber');
+        _startTimer();
+      } else {
+        context.showError(result.message);
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showError('Failed to send OTP. Please try again.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSendingOtp = false);
+      }
+    }
+  }
+
+  Future<void> _verifyCode() async {
+    final code = _smsCodeController.text.trim();
+
+    if (code.length != 6) {
+      context.showError('Please enter a valid 6-digit OTP code.');
+      return;
+    }
+
+    setState(() => _isVerifying = true);
+
+    try {
+      final result = await _authService.verifyOtp(code);
+      if (!mounted) return;
+
+      if (result.isSuccess && result.hasUser) {
+        context.showSuccess('Signed in successfully!');
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/homepage',
+          (route) => false,
+        );
+      } else {
+        context.showError(result.message);
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showError('Verification failed. Please try again.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isVerifying = false);
+      }
+    }
   }
 
   InputDecoration _inputDecoration(String hint) {
@@ -67,9 +149,9 @@ class _SignInPageState extends State<SignInPage> {
     );
   }
 
-  bool get isPhoneValid =>
-      completePhoneNumber.startsWith('+63') && completePhoneNumber.length >= 12;
-  bool get isCodeValid => smsCodeController.text.trim().length == 6;
+  bool get _isPhoneValid =>
+      _completePhoneNumber.startsWith('+63') && _completePhoneNumber.length >= 12;
+  bool get _isCodeValid => _smsCodeController.text.trim().length == 6;
 
   @override
   Widget build(BuildContext context) {
@@ -101,7 +183,7 @@ class _SignInPageState extends State<SignInPage> {
                 ),
                 const SizedBox(height: 20),
                 IntlPhoneField(
-                  controller: phoneController,
+                  controller: _phoneController,
                   initialCountryCode: 'PH',
                   countries: const [
                     Country(
@@ -121,7 +203,7 @@ class _SignInPageState extends State<SignInPage> {
                   dropdownTextStyle: GoogleFonts.inter(fontSize: 16),
                   flagsButtonPadding: const EdgeInsets.only(left: 8),
                   onChanged: (phone) => setState(
-                    () => completePhoneNumber = phone.completeNumber,
+                    () => _completePhoneNumber = phone.completeNumber,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -129,7 +211,7 @@ class _SignInPageState extends State<SignInPage> {
                   alignment: Alignment.centerRight,
                   children: [
                     TextField(
-                      controller: smsCodeController,
+                      controller: _smsCodeController,
                       keyboardType: TextInputType.number,
                       maxLength: 6,
                       decoration: _inputDecoration(
@@ -141,11 +223,8 @@ class _SignInPageState extends State<SignInPage> {
                     Padding(
                       padding: const EdgeInsets.only(right: 8.0),
                       child: TextButton(
-                        onPressed: (isPhoneValid && secondsRemaining == 0)
-                            ? () {
-                                // TODO: trigger request SMS using completePhoneNumber
-                                _startTimer();
-                              }
+                        onPressed: (_isPhoneValid && _secondsRemaining == 0 && !_isSendingOtp)
+                            ? _sendOtp
                             : null,
                         style: TextButton.styleFrom(
                           foregroundColor: AppColors.primary,
@@ -155,12 +234,21 @@ class _SignInPageState extends State<SignInPage> {
                           ),
                           backgroundColor: Colors.transparent,
                         ),
-                        child: Text(
-                          secondsRemaining > 0
-                              ? 'Resend (00:${secondsRemaining.toString().padLeft(2, '0')})'
-                              : 'Get SMS Code',
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                        ),
+                        child: _isSendingOtp
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.primary,
+                                ),
+                              )
+                            : Text(
+                                _secondsRemaining > 0
+                                    ? 'Resend (00:${_secondsRemaining.toString().padLeft(2, '0')})'
+                                    : 'Get SMS Code',
+                                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                              ),
                       ),
                     ),
                   ],
@@ -175,7 +263,7 @@ class _SignInPageState extends State<SignInPage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: (isPhoneValid && isCodeValid) ? () {} : null,
+                    onPressed: (_isPhoneValid && _isCodeValid && !_isVerifying) ? _verifyCode : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
@@ -185,13 +273,22 @@ class _SignInPageState extends State<SignInPage> {
                       ),
                       elevation: 3,
                     ),
-                    child: Text(
-                      'SIGN IN',
-                      style: GoogleFonts.inter(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                      ),
-                    ),
+                    child: _isVerifying
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Text(
+                            'SIGN IN',
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 20),

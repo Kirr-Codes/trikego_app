@@ -16,6 +16,7 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
 
   @override
   Widget build(BuildContext context) {
+    final userData = _authService.currentUserData;
     final user = _authService.currentUser;
     return Drawer(
       backgroundColor: AppColors.primary,
@@ -53,7 +54,7 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
                     
                     // Name
                     Text(
-                      user?.displayName ?? 'User',
+                      userData?.displayName ?? user?.displayName ?? 'User',
                       style: GoogleFonts.inter(
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
@@ -64,7 +65,7 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
                     
                     // Phone Number
                     Text(
-                      user?.phoneNumber ?? 'No phone number',
+                      userData?.user.phoneNum ?? user?.phoneNumber ?? 'No phone number',
                       style: GoogleFonts.inter(
                         fontSize: 16,
                         fontWeight: FontWeight.w400,

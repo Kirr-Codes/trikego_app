@@ -7,7 +7,6 @@ import 'screens/signin_email_page.dart';
 import 'screens/otp_page.dart';
 import 'screens/signin_page.dart';
 import 'screens/edit_profile_page.dart';
-import 'screens/phone_update_otp_page.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/homepage.dart';
