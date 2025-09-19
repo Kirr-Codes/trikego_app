@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import '../services/firestore_service.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../Services/firestore_service.dart';
 import '../models/user_models.dart';
 
 /// Professional Firebase Authentication Service
@@ -13,6 +15,14 @@ class AuthService {
 
   // Firebase Auth instance
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
+
+  // Google Sign-In instance - Lazy initialization to prevent conflicts
+  GoogleSignIn? _googleSignIn;
+  
+  GoogleSignIn get googleSignIn {
+    _googleSignIn ??= GoogleSignIn();
+    return _googleSignIn!;
+  }
 
   // Firestore service
   final FirestoreService _firestoreService = FirestoreService();
@@ -224,6 +234,7 @@ class AuthService {
     try {
       _log('Signing out user');
       await _firebaseAuth.signOut();
+      await signOutFromGoogle(); // Re-enabled with proper isolation
       _clearPendingData();
       _currentUserData = null;
       _updateAuthState(AuthState.unauthenticated());
@@ -231,6 +242,350 @@ class AuthService {
     } catch (e) {
       _logError('Sign out failed', e);
       return AuthResult.error(_getErrorMessage(e));
+    }
+  }
+
+  /// Sign in with Google/Gmail - Isolated to prevent phone auth conflicts
+  /// Implements account linking to unify phone and Gmail authentication
+  Future<AuthResult> signInWithGmail() async {
+    try {
+      _log('Starting Gmail sign-in process');
+
+      // Step 1: Sign in with Google (lazy initialization)
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      if (googleUser == null) {
+        return AuthResult.error('Gmail sign-in was cancelled by user');
+      }
+
+      // Step 2: Get authentication details from Google
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // Step 3: Check if user exists in Firestore by email
+      final email = googleUser.email;
+      final existingUserUid = await _getUserUidByEmail(email);
+
+      if (existingUserUid != null) {
+        // Check if Gmail was previously unlinked
+        final isGmailUnlinked = await _checkGmailUnlinkedStatus(existingUserUid);
+        if (isGmailUnlinked) {
+          _log('Gmail $email was previously unlinked, preventing sign-in');
+          return AuthResult.error(
+            'This Gmail account was previously unlinked. Please sign in with your phone number first.',
+            errorCode: 'GMAIL_PREVIOUSLY_UNLINKED',
+          );
+        }
+        
+        // Scenario B: User has phone auth, wants to link Gmail
+        _log('Found existing user with email $email, attempting account linking');
+        return await _linkGmailToExistingAccount(credential, existingUserUid, email);
+      } else {
+        // Scenario A: New user or user with only Gmail auth
+        _log('No existing user found, proceeding with direct Gmail sign-in');
+        return await _signInWithGmailCredential(credential, email);
+      }
+    } on FirebaseAuthException catch (e) {
+      _logError('Gmail sign-in failed with Firebase error', e);
+      return AuthResult.error(_getErrorMessage(e));
+    } catch (e) {
+      _logError('Gmail sign-in failed', e);
+      return AuthResult.error('Gmail sign-in failed. Please try again.');
+    }
+  }
+
+  /// Link Gmail to existing phone authentication account
+  Future<AuthResult> _linkGmailToExistingAccount(
+    AuthCredential gmailCredential,
+    String existingUserUid,
+    String email,
+  ) async {
+    try {
+      _log('Linking Gmail to existing account with UID: $existingUserUid');
+
+      // Check if current user is already signed in
+      final currentUser = _firebaseAuth.currentUser;
+      
+      if (currentUser != null && currentUser.uid == existingUserUid) {
+        // User is already signed in with the correct account
+        _log('User already signed in with correct account, updating email');
+        
+        // Update email in Firestore if needed
+        final firestoreResult = await _updateUserEmail(existingUserUid, email);
+        
+        if (firestoreResult['success']) {
+          // Clear the "unlinked" flag since Gmail is now linked again
+          await _clearGmailUnlinkedFlag(existingUserUid);
+          
+          _currentUserData = await _firestoreService.getCompleteUserData(existingUserUid);
+          _updateAuthState(AuthState.authenticated(currentUser));
+          return AuthResult.success('Gmail linked successfully');
+        } else {
+          return AuthResult.error(firestoreResult['message']);
+        }
+      } else {
+        // Need to sign in with the existing account first
+        _log('Signing in with existing phone account for linking');
+        
+        // Sign in with Gmail credential first
+        final userCredential = await _firebaseAuth.signInWithCredential(gmailCredential);
+        final gmailUser = userCredential.user;
+        
+        if (gmailUser == null) {
+          return AuthResult.error('Failed to sign in with Gmail');
+        }
+
+        // Check if this is a different account that needs linking
+        if (gmailUser.uid != existingUserUid) {
+          _log('Attempting to link different UID accounts');
+          
+          // Sign out the Gmail user
+          await _firebaseAuth.signOut();
+          
+          // This is a complex scenario - user has separate Gmail and phone accounts
+          return await _handleAccountLinkingConflict(existingUserUid, email, gmailCredential);
+        } else {
+          // Same UID - just update Firestore
+          final firestoreResult = await _updateUserEmail(existingUserUid, email);
+          if (firestoreResult['success']) {
+            _currentUserData = await _firestoreService.getCompleteUserData(existingUserUid);
+            _updateAuthState(AuthState.authenticated(gmailUser));
+            return AuthResult.success('Gmail linked successfully');
+          } else {
+            return AuthResult.error(firestoreResult['message']);
+          }
+        }
+      }
+    } catch (e) {
+      _logError('Failed to link Gmail to existing account', e);
+      return AuthResult.error('Failed to link Gmail account. Please try again.');
+    }
+  }
+
+  /// Sign in with Gmail credential for new users
+  Future<AuthResult> _signInWithGmailCredential(
+    AuthCredential gmailCredential,
+    String email,
+  ) async {
+    try {
+      _log('Signing in with Gmail credential for new user');
+
+      // Sign in with Gmail
+      final userCredential = await _firebaseAuth.signInWithCredential(gmailCredential);
+      final user = userCredential.user;
+
+      if (user == null) {
+        return AuthResult.error('Failed to sign in with Gmail');
+      }
+
+      // Check if user exists in Firestore
+      final canLogin = await _firestoreService.canUserLogin(user.uid);
+      if (canLogin) {
+        // User exists in Firestore
+        _currentUserData = await _firestoreService.getCompleteUserData(user.uid);
+        _updateAuthState(AuthState.authenticated(user));
+        return AuthResult.success('Signed in successfully with Gmail');
+      } else {
+        // New user - they need to complete registration
+        _log('New Gmail user, requiring registration completion');
+        await _firebaseAuth.signOut();
+        return AuthResult.error(
+          'Gmail account not registered. Please complete registration first.',
+          errorCode: 'ACCOUNT_NOT_REGISTERED',
+        );
+      }
+    } catch (e) {
+      _logError('Gmail credential sign-in failed', e);
+      return AuthResult.error('Gmail sign-in failed. Please try again.');
+    }
+  }
+
+  /// Handle complex account linking scenarios
+  Future<AuthResult> _handleAccountLinkingConflict(
+    String existingUserUid,
+    String email,
+    AuthCredential gmailCredential,
+  ) async {
+    try {
+      _log('Handling account linking conflict for UID: $existingUserUid');
+
+      // For now, we'll prevent linking and ask user to use phone login
+      // In a production app, you might want to implement more sophisticated
+      // account merging logic here
+      
+      return AuthResult.error(
+        'This Gmail account is not linked to your registered account. '
+        'Please sign in with your phone number first, then link your Gmail account.',
+        errorCode: 'ACCOUNT_NOT_LINKED',
+      );
+    } catch (e) {
+      _logError('Account linking conflict resolution failed', e);
+      return AuthResult.error('Account linking failed. Please contact support.');
+    }
+  }
+
+  /// Link Gmail to current authenticated user - Isolated to prevent conflicts
+  /// Used when user is already signed in with phone and wants to add Gmail
+  Future<AuthResult> linkGmailToCurrentUser() async {
+    try {
+      final currentUser = _firebaseAuth.currentUser;
+      if (currentUser == null) {
+        return AuthResult.error('No user is currently signed in');
+      }
+
+      _log('Linking Gmail to current user: ${currentUser.uid}');
+
+      // Sign in with Google (lazy initialization)
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      if (googleUser == null) {
+        return AuthResult.error('Gmail sign-in was cancelled by user');
+      }
+
+      // Get authentication details
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // Link the credential to current user
+      await currentUser.linkWithCredential(credential);
+      
+      // Update email in Firestore
+      final firestoreResult = await _updateUserEmail(currentUser.uid, googleUser.email);
+
+      if (firestoreResult['success']) {
+        _currentUserData = await _firestoreService.getCompleteUserData(currentUser.uid);
+        return AuthResult.success('Gmail linked successfully to your account');
+      } else {
+        return AuthResult.error(firestoreResult['message']);
+      }
+    } on FirebaseAuthException catch (e) {
+      _logError('Gmail linking failed with Firebase error', e);
+      return AuthResult.error(_getErrorMessage(e));
+    } catch (e) {
+      _logError('Gmail linking failed', e);
+      return AuthResult.error('Failed to link Gmail account. Please try again.');
+    }
+  }
+
+  /// Unlink Gmail from current user account
+  Future<AuthResult> unlinkGmailFromCurrentUser() async {
+    try {
+      final currentUser = _firebaseAuth.currentUser;
+      if (currentUser == null) {
+        return AuthResult.error('No user is currently signed in');
+      }
+
+      _log('Unlinking Gmail from current user: ${currentUser.uid}');
+
+      // Check if user has Gmail provider
+      final providers = currentUser.providerData
+          .where((provider) => provider.providerId == 'google.com')
+          .toList();
+
+      if (providers.isEmpty) {
+        return AuthResult.error('Gmail is not linked to this account');
+      }
+
+      // Unlink Gmail provider
+      await currentUser.unlink('google.com');
+      
+      // Mark Gmail as unlinked in Firestore to prevent future Gmail sign-ins
+      try {
+        // Clear profile picture from Gmail by updating directly
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .update({
+          'profilePictureUrl': null,
+          'updatedAt': Timestamp.now(),
+        });
+        
+        // Also mark the Gmail as unlinked in the user document
+        await _markGmailUnlinked(currentUser.uid);
+      } catch (e) {
+        _log('Warning: Failed to update Firestore after unlinking Gmail: $e');
+        // Continue anyway since the unlinking was successful
+      }
+      
+      // Sync user data (with error handling)
+      try {
+        _currentUserData = await _firestoreService.getCompleteUserData(currentUser.uid);
+      } catch (e) {
+        _log('Warning: Failed to sync user data after unlinking Gmail: $e');
+        // Continue anyway since the unlinking was successful
+      }
+      
+      return AuthResult.success('Gmail unlinked successfully');
+    } on FirebaseAuthException catch (e) {
+      _logError('Gmail unlinking failed with Firebase error', e);
+      return AuthResult.error(_getErrorMessage(e));
+    } catch (e) {
+      _logError('Gmail unlinking failed', e);
+      return AuthResult.error('Failed to unlink Gmail account. Please try again.');
+    }
+  }
+
+  /// Check if current user has Gmail linked
+  bool get hasGmailLinked {
+    final currentUser = _firebaseAuth.currentUser;
+    if (currentUser == null) return false;
+    
+    return currentUser.providerData
+        .any((provider) => provider.providerId == 'google.com');
+  }
+
+  /// Sign out from Google Sign-In - Isolated to prevent conflicts
+  Future<void> signOutFromGoogle() async {
+    try {
+      if (_googleSignIn != null) {
+        await _googleSignIn!.signOut();
+        _log('Signed out from Google Sign-In');
+      }
+    } catch (e) {
+      _logError('Failed to sign out from Google', e);
+    }
+  }
+
+  /// Helper method to get user UID by email
+  Future<String?> _getUserUidByEmail(String email) async {
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final querySnapshot = await firestore
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+      if (querySnapshot.docs.isNotEmpty) {
+        return querySnapshot.docs.first.id;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Helper method to update user email
+  Future<Map<String, dynamic>> _updateUserEmail(String userId, String email) async {
+    try {
+      final firestore = FirebaseFirestore.instance;
+      await firestore.collection('users').doc(userId).update({
+        'email': email,
+        'updatedAt': Timestamp.now(),
+      });
+      return {
+        'success': true,
+        'message': 'Email updated successfully',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Failed to update email: ${e.toString()}',
+      };
     }
   }
 
@@ -471,6 +826,7 @@ class AuthService {
     String? firstName,
     String? lastName,
     String? email,
+    String? profilePictureUrl,
   }) async {
     try {
       final user = currentUser;
@@ -499,6 +855,17 @@ class AuthService {
         lastName: lastName,
         email: email,
       );
+
+      // Update profile picture separately if provided
+      if (profilePictureUrl != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({
+          'profilePictureUrl': profilePictureUrl,
+          'updatedAt': Timestamp.now(),
+        });
+      }
 
       if (!firestoreResult['success']) {
         _log('Firestore profile update failed: ${firestoreResult['message']}');
@@ -591,6 +958,58 @@ class AuthService {
     _authStateController.close();
     _userController.close();
   }
+
+  // Helper method to check if Gmail was previously unlinked
+  Future<bool> _checkGmailUnlinkedStatus(String userId) async {
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+      
+      if (!userDoc.exists) return false;
+      
+      final data = userDoc.data();
+      return data?['gmailUnlinked'] == true;
+    } catch (e) {
+      _logError('Failed to check Gmail unlinked status', e);
+      return false;
+    }
+  }
+
+  // Helper method to mark Gmail as unlinked
+  Future<void> _markGmailUnlinked(String userId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .update({
+        'gmailUnlinked': true,
+        'gmailUnlinkedAt': Timestamp.now(),
+        'updatedAt': Timestamp.now(),
+      });
+      _log('Gmail marked as unlinked for user: $userId');
+    } catch (e) {
+      _logError('Failed to mark Gmail as unlinked', e);
+    }
+  }
+
+  // Helper method to clear Gmail unlinked flag
+  Future<void> _clearGmailUnlinkedFlag(String userId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .update({
+        'gmailUnlinked': FieldValue.delete(),
+        'gmailUnlinkedAt': FieldValue.delete(),
+        'updatedAt': Timestamp.now(),
+      });
+      _log('Gmail unlinked flag cleared for user: $userId');
+    } catch (e) {
+      _logError('Failed to clear Gmail unlinked flag', e);
+    }
+  }
 }
 
 /// User profile data model
@@ -616,12 +1035,14 @@ class AuthResult {
   final String message;
   final User? user;
   final String? verificationId;
+  final String? errorCode;
 
   const AuthResult._({
     required this.isSuccess,
     required this.message,
     this.user,
     this.verificationId,
+    this.errorCode,
   });
 
   factory AuthResult.success(String message) {
@@ -640,8 +1061,8 @@ class AuthResult {
     );
   }
 
-  factory AuthResult.error(String message) {
-    return AuthResult._(isSuccess: false, message: message);
+  factory AuthResult.error(String message, {String? errorCode}) {
+    return AuthResult._(isSuccess: false, message: message, errorCode: errorCode);
   }
 
   bool get isError => !isSuccess;

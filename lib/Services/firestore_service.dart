@@ -88,7 +88,6 @@ class FirestoreService {
           },
         );
       } catch (e) {
-      
         // If it's a permission error, provide specific guidance
         if (e.toString().contains('permission-denied')) {
           throw Exception(
@@ -96,7 +95,7 @@ class FirestoreService {
           );
         }
 
-      try {
+        try {
           await _firestore
               .collection(_usersCollection)
               .doc(user.uid)
@@ -108,7 +107,6 @@ class FirestoreService {
         } catch (individualError) {
           rethrow;
         }
-
       }
 
       return {
@@ -222,6 +220,7 @@ class FirestoreService {
     String? firstName,
     String? lastName,
     String? email,
+    String? profilePictureUrl,
   }) async {
     try {
       final user = _auth.currentUser;
@@ -237,17 +236,22 @@ class FirestoreService {
       bool hasUpdates = false;
 
       // Update user document if email is provided
-      if (email != null) {
-        final userDocRef = _firestore
-            .collection(_usersCollection)
-            .doc(user.uid);
-        batch.update(userDocRef, {
-          'email': email,
-          'updatedAt': Timestamp.now(),
-        });
-        hasUpdates = true;
-      }
+      if (email != null || profilePictureUrl != null) {
+        {
+          final userDocRef = _firestore
+              .collection(_usersCollection)
+              .doc(user.uid);
+          final updateData = <String, dynamic>{'updatedAt': Timestamp.now()};
 
+          if (email != null) updateData['email'] = email;
+          if (profilePictureUrl != null) {
+            updateData['profilePictureUrl'] = profilePictureUrl;
+          }
+
+          batch.update(userDocRef, updateData);
+          hasUpdates = true;
+        }
+      }
       // Update passenger document if name fields are provided
       if (firstName != null || lastName != null) {
         final passengerDocRef = _firestore
@@ -255,8 +259,8 @@ class FirestoreService {
             .doc(user.uid);
         final updateData = <String, dynamic>{'updatedAt': Timestamp.now()};
 
-        if (firstName != null) updateData['fname'] = firstName;
-        if (lastName != null) updateData['name'] = lastName;
+        if (firstName != null) updateData['firstName'] = firstName;
+        if (lastName != null) updateData['lastName'] = lastName;
 
         batch.update(passengerDocRef, updateData);
         hasUpdates = true;

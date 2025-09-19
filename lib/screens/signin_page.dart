@@ -27,6 +27,7 @@ class _SignInPageState extends State<SignInPage> {
   
   bool _isSendingOtp = false;
   bool _isVerifying = false;
+  bool _isGmailLoading = false;
 
   @override
   void dispose() {
@@ -123,6 +124,46 @@ class _SignInPageState extends State<SignInPage> {
     } finally {
       if (mounted) {
         setState(() => _isVerifying = false);
+      }
+    }
+  }
+
+  Future<void> _signInWithGmail() async {
+    setState(() => _isGmailLoading = true);
+
+    try {
+      final result = await _authService.signInWithGmail();
+      if (!mounted) return;
+
+      if (result.isSuccess) {
+        context.showSuccess('Signed in successfully with Gmail!');
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/homepage',
+          (route) => false,
+        );
+      } else {
+        // Handle specific error cases
+        if (result.errorCode == 'ACCOUNT_NOT_REGISTERED') {
+          context.showError(
+            'Gmail account not registered. Please complete registration first.',
+          );
+        } else if (result.errorCode == 'ACCOUNT_NOT_LINKED') {
+          context.showError(
+            'This Gmail account is not linked to your registered account. '
+            'Please sign in with your phone number first, then link your Gmail account.',
+          );
+        } else {
+          context.showError(result.message);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showError('Gmail sign-in failed. Please try again.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isGmailLoading = false);
       }
     }
   }
@@ -316,13 +357,22 @@ class _SignInPageState extends State<SignInPage> {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    onPressed: () => Navigator.of(context).pushNamed('/signin_email'),
-                    icon: const Icon(
-                      Icons.mail_outline,
-                      color: AppColors.primary,
-                    ),
+                    onPressed: _isGmailLoading ? null : _signInWithGmail,
+                    icon: _isGmailLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primary,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.mail_outline,
+                            color: AppColors.primary,
+                          ),
                     label: Text(
-                      'Sign in with email',
+                      'Sign in with Gmail',
                       style: GoogleFonts.inter(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
