@@ -5,6 +5,7 @@ class AppUser {
   final String userId;
   final String phoneNum;
   final String email;
+  final String? profilePictureUrl;
   final int userType; // 1=passenger, 2=driver, 3=admin
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -14,6 +15,7 @@ class AppUser {
     required this.userId,
     required this.phoneNum,
     required this.email,
+    this.profilePictureUrl,
     required this.userType,
     required this.createdAt,
     required this.updatedAt,
@@ -27,6 +29,7 @@ class AppUser {
       userId: doc.id,
       phoneNum: data['phoneNum'] ?? '',
       email: data['email'] ?? '',
+      profilePictureUrl: data['profilePictureUrl'],
       userType: data['userType'] ?? 1,
       createdAt: (data['createdAt'] as Timestamp).toDate(),
       updatedAt: (data['updatedAt'] as Timestamp).toDate(),
@@ -39,6 +42,7 @@ class AppUser {
     return {
       'phoneNum': phoneNum,
       'email': email,
+      'profilePictureUrl': profilePictureUrl,
       'userType': userType,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
@@ -51,6 +55,7 @@ class AppUser {
     required String userId,
     required String phoneNumber,
     required String email,
+    String? profilePictureUrl,
     int userType = 1, // Default to passenger for mobile app
   }) {
     final now = DateTime.now();
@@ -58,6 +63,7 @@ class AppUser {
       userId: userId,
       phoneNum: phoneNumber,
       email: email,
+      profilePictureUrl: profilePictureUrl,
       userType: userType,
       createdAt: now,
       updatedAt: now,
@@ -70,6 +76,7 @@ class AppUser {
     String? userId,
     String? phoneNum,
     String? email,
+    String? profilePictureUrl,
     int? userType,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -79,6 +86,7 @@ class AppUser {
       userId: userId ?? this.userId,
       phoneNum: phoneNum ?? this.phoneNum,
       email: email ?? this.email,
+      profilePictureUrl: profilePictureUrl ?? this.profilePictureUrl,
       userType: userType ?? this.userType,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -88,7 +96,7 @@ class AppUser {
 
   @override
   String toString() {
-    return 'AppUser(userId: $userId, phoneNum: $phoneNum, email: $email, userType: $userType, isActive: $isActive)';
+    return 'AppUser(userId: $userId, phoneNum: $phoneNum, email: $email, profilePictureUrl: $profilePictureUrl, userType: $userType, isActive: $isActive)';
   }
 }
 

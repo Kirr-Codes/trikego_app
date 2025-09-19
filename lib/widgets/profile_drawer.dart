@@ -20,8 +20,7 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
     final user = _authService.currentUser;
     return Drawer(
       backgroundColor: AppColors.primary,
-      child: Container(
-        child: SafeArea(
+      child: SafeArea(
           child: Column(
             children: [
               // Profile Section
@@ -37,13 +36,13 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                           width: 2,
                         ),
                       ),
                       child: CircleAvatar(
                         radius: 38,
-                        backgroundColor: Colors.white.withOpacity(0.2),
+                        backgroundColor: Colors.white.withValues(alpha: 0.2),
                         backgroundImage: userData?.user.profilePictureUrl != null
                             ? NetworkImage(userData!.user.profilePictureUrl!)
                             : null,
@@ -51,13 +50,13 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
                             ? Icon(
                                 Icons.person,
                                 size: 40,
-                                color: Colors.white.withOpacity(0.9),
+                                color: Colors.white.withValues(alpha: 0.9),
                               )
                             : null,
                       ),
                     ),
                     const SizedBox(height: 16),
-                    
+
                     // Name
                     Text(
                       userData?.displayName ?? user?.displayName ?? 'User',
@@ -71,31 +70,33 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
                       overflow: TextOverflow.visible,
                     ),
                     const SizedBox(height: 4),
-                    
+
                     // Phone Number
                     Text(
-                      userData?.user.phoneNum ?? user?.phoneNumber ?? 'No phone number',
+                      userData?.user.phoneNum ??
+                          user?.phoneNumber ??
+                          'No phone number',
                       style: GoogleFonts.inter(
                         fontSize: 14,
                         fontWeight: FontWeight.w400,
-                        color: Colors.white.withOpacity(0.8),
+                        color: Colors.white.withValues(alpha: 0.8),
                       ),
                       textAlign: TextAlign.center,
                       maxLines: 2,
                       overflow: TextOverflow.visible,
                     ),
                     const SizedBox(height: 20),
-                    
+
                     // Divider
                     Container(
                       height: 1,
                       width: double.infinity,
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                     ),
                   ],
                 ),
               ),
-              
+
               // Menu Items
               Expanded(
                 child: Padding(
@@ -138,7 +139,7 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
                   ),
                 ),
               ),
-              
+
               // Logout Button
               Padding(
                 padding: const EdgeInsets.all(24),
@@ -174,7 +175,6 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
               ),
             ],
           ),
-        ),
       ),
     );
   }
@@ -188,11 +188,7 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        leading: Icon(
-          icon,
-          color: Colors.white,
-          size: 24,
-        ),
+        leading: Icon(icon, color: Colors.white, size: 24),
         title: Text(
           title,
           style: GoogleFonts.inter(
@@ -203,11 +199,9 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
         ),
         onTap: onTap,
         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        hoverColor: Colors.white.withOpacity(0.1),
-        splashColor: Colors.white.withOpacity(0.2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        hoverColor: Colors.white.withValues(alpha: 0.1),
+        splashColor: Colors.white.withValues(alpha: 0.2),
       ),
     );
   }
@@ -223,17 +217,11 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
           ),
           title: Text(
             'Logout',
-            style: GoogleFonts.inter(
-              fontWeight: FontWeight.w700,
-              fontSize: 20,
-            ),
+            style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 20),
           ),
           content: Text(
             'Are you sure you want to logout?',
-            style: GoogleFonts.inter(
-              fontSize: 16,
-              color: Colors.black87,
-            ),
+            style: GoogleFonts.inter(fontSize: 16, color: Colors.black87),
           ),
           actions: [
             TextButton(
@@ -250,14 +238,14 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
               onPressed: () {
                 Navigator.pop(context); // Close dialog
                 Navigator.pop(context); // Close drawer
-                
+
                 // Navigate to landing page and clear navigation stack
                 Navigator.pushNamedAndRemoveUntil(
                   context,
                   '/',
                   (route) => false,
                 );
-                
+
                 context.showSuccess('You have been logged out successfully');
               },
               style: ElevatedButton.styleFrom(
@@ -269,9 +257,7 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
               ),
               child: Text(
                 'Logout',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -291,11 +277,7 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
           ),
           title: Row(
             children: [
-              Icon(
-                Icons.info_outline,
-                color: AppColors.primary,
-                size: 28,
-              ),
+              Icon(Icons.info_outline, color: AppColors.primary, size: 28),
               const SizedBox(width: 12),
               Text(
                 'About TrikeGO',
@@ -343,9 +325,7 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
               ),
               child: Text(
                 'OK',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
               ),
             ),
           ],

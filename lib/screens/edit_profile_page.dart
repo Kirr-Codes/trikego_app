@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:intl_phone_field/countries.dart';
 import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../main.dart' show AppColors;
 import '../Services/auth_service.dart';
 import '../utils/snackbar_utils.dart';
@@ -23,6 +25,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   final TextEditingController _mobileController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final AuthService _authService = AuthService();
+  final ImagePicker _imagePicker = ImagePicker();
 
   bool _isLoading = false;
 
@@ -94,11 +97,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
       _emailController.text = email;
       _originalEmail = email;
 
-      // Load profile photo URL from Firebase Auth
-      final user = _authService.currentUser;
-      if (user != null) {
-        _profilePhotoUrl = user.photoURL;
-      }
+      // Load profile photo URL from user data
+      _profilePhotoUrl = userData.user.profilePictureUrl;
     }
   }
 
@@ -254,26 +254,44 @@ class _EditProfilePageState extends State<EditProfilePage> {
   /// Pick image from camera
   Future<void> _pickImageFromCamera() async {
     try {
-      // For now, we'll show a placeholder message
-      // In a real app, you would use image_picker package
-      context.showInfo(
-        'Camera functionality will be implemented with image_picker package',
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
       );
+      
+      if (image != null) {
+        setState(() {
+          _selectedImageFile = File(image.path);
+          _profilePhotoUrl = null; // Clear the URL when a new file is selected
+        });
+        context.showSuccess('Photo captured successfully');
+      }
     } catch (e) {
-      context.showError('Failed to access camera');
+      context.showError('Failed to access camera: ${e.toString()}');
     }
   }
 
   /// Pick image from gallery
   Future<void> _pickImageFromGallery() async {
     try {
-      // For now, we'll show a placeholder message
-      // In a real app, you would use image_picker package
-      context.showInfo(
-        'Gallery functionality will be implemented with image_picker package',
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
       );
+      
+      if (image != null) {
+        setState(() {
+          _selectedImageFile = File(image.path);
+          _profilePhotoUrl = null; // Clear the URL when a new file is selected
+        });
+        context.showSuccess('Photo selected successfully');
+      }
     } catch (e) {
-      context.showError('Failed to access gallery');
+      context.showError('Failed to access gallery: ${e.toString()}');
     }
   }
 
@@ -284,6 +302,34 @@ class _EditProfilePageState extends State<EditProfilePage> {
       _profilePhotoUrl = null;
     });
     context.showInfo('Profile photo removed');
+  }
+
+  /// Upload image to Firebase Storage and update profile
+  Future<String?> _uploadImageToStorage(File imageFile) async {
+    try {
+      final user = _authService.currentUser;
+      if (user == null) {
+        context.showError('No authenticated user found');
+        return null;
+      }
+
+      // Create a reference to the file location in Firebase Storage
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('profile_pictures')
+          .child('${user.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+
+      // Upload the file
+      final uploadTask = ref.putFile(imageFile);
+      final snapshot = await uploadTask;
+      
+      // Get the download URL
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      return downloadUrl;
+    } catch (e) {
+      context.showError('Failed to upload image: ${e.toString()}');
+      return null;
+    }
   }
 
   /// Build default avatar widget
@@ -335,13 +381,27 @@ class _EditProfilePageState extends State<EditProfilePage> {
       final lastName = _lastNameController.text.trim();
       final fullName = '$firstName $lastName'.trim();
 
+      // Handle image upload if a new image was selected
+      String? profilePictureUrl = _profilePhotoUrl;
+      if (_selectedImageFile != null) {
+        context.showLoading('Uploading image...');
+        profilePictureUrl = await _uploadImageToStorage(_selectedImageFile!);
+        if (profilePictureUrl == null) {
+          setState(() => _isLoading = false);
+          context.hideSnackBar(); // Hide loading snackbar
+          return;
+        }
+        context.hideSnackBar(); // Hide loading snackbar
+      }
+
       // Update profile information in both Firebase Auth and Firestore
       final result = await _authService.updateProfile(
         displayName: fullName,
-        photoURL: _profilePhotoUrl,
+        photoURL: profilePictureUrl,
         firstName: firstName,
         lastName: lastName,
         email: _emailController.text.trim(),
+        profilePictureUrl: profilePictureUrl,
       );
 
       if (!mounted) return;
@@ -351,6 +411,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
         _originalFirstName = _firstNameController.text.trim();
         _originalLastName = _lastNameController.text.trim();
         _originalEmail = _emailController.text.trim();
+        
+        // Clear selected image file and update profile photo URL
+        setState(() {
+          _selectedImageFile = null;
+          _profilePhotoUrl = profilePictureUrl;
+        });
 
         context.showSuccess('Profile updated successfully!');
         Navigator.pop(context);
