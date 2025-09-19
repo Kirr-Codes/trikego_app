@@ -28,6 +28,7 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
               Container(
                 padding: const EdgeInsets.all(24),
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     // Profile Avatar
                     Container(
@@ -43,11 +44,16 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
                       child: CircleAvatar(
                         radius: 38,
                         backgroundColor: Colors.white.withOpacity(0.2),
-                        child: Icon(
-                          Icons.person,
-                          size: 40,
-                          color: Colors.white.withOpacity(0.9),
-                        ),
+                        backgroundImage: userData?.user.profilePictureUrl != null
+                            ? NetworkImage(userData!.user.profilePictureUrl!)
+                            : null,
+                        child: userData?.user.profilePictureUrl == null
+                            ? Icon(
+                                Icons.person,
+                                size: 40,
+                                color: Colors.white.withOpacity(0.9),
+                              )
+                            : null,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -56,10 +62,13 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
                     Text(
                       userData?.displayName ?? user?.displayName ?? 'User',
                       style: GoogleFonts.inter(
-                        fontSize: 24,
+                        fontSize: 20,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,
                       ),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.visible,
                     ),
                     const SizedBox(height: 4),
                     
@@ -67,10 +76,13 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
                     Text(
                       userData?.user.phoneNum ?? user?.phoneNumber ?? 'No phone number',
                       style: GoogleFonts.inter(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w400,
                         color: Colors.white.withOpacity(0.8),
                       ),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.visible,
                     ),
                     const SizedBox(height: 20),
                     
@@ -103,7 +115,7 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
                         title: 'History',
                         onTap: () {
                           Navigator.pop(context);
-                          context.showInfo('History feature coming soon!');
+                          Navigator.pushNamed(context, '/history');
                         },
                       ),
                       _buildMenuItem(
@@ -111,7 +123,7 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
                         title: 'Settings',
                         onTap: () {
                           Navigator.pop(context);
-                          context.showInfo('Settings feature coming soon!');
+                          Navigator.pushNamed(context, '/settings');
                         },
                       ),
                       _buildMenuItem(
