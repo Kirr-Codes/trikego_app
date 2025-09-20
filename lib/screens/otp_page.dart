@@ -10,15 +10,13 @@ class OtpPage extends StatefulWidget {
   final String phoneNumber;
   final String firstName;
   final String lastName;
-  final String email;
 
   const OtpPage({
-    Key? key,
+    super.key,
     required this.phoneNumber,
     required this.firstName,
     required this.lastName,
-    required this.email,
-  }) : super(key: key);
+  });
 
   @override
   State<OtpPage> createState() => _OtpPageState();
@@ -89,7 +87,6 @@ class _OtpPageState extends State<OtpPage> {
       final result = await _authService.registerUserInFirestore(
         firstName: widget.firstName,
         lastName: widget.lastName,
-        email: widget.email,
       ).timeout(
         const Duration(seconds: 30),
         onTimeout: () => AuthResult.error('Registration timeout. Please try again.'),
@@ -98,7 +95,7 @@ class _OtpPageState extends State<OtpPage> {
       if (!mounted) return;
 
       if (result.isSuccess) {
-        context.showSuccess('Registration completed successfully!');
+    
         Navigator.pushNamedAndRemoveUntil(
           context,
           '/homepage',

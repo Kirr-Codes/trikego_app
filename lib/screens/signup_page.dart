@@ -1,4 +1,3 @@
-// import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
@@ -20,7 +19,6 @@ class _SignUpPageState extends State<SignUpPage> {
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _mobileController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
 
   final AuthService _authService = AuthService();
   String _completePhoneNumber = '';
@@ -55,19 +53,10 @@ class _SignUpPageState extends State<SignUpPage> {
         return;
       }
 
-      final emailExists = await _authService.checkEmailExists(_emailController.text.trim());
-      if (!mounted) return;
-
-      if (emailExists) {
-        context.showError('This email is already registered. Please use a different email or sign in instead.');
-        setState(() => _isLoading = false);
-        return;
-      }
 
       final userProfile = UserProfile(
         firstName: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
-        email: _emailController.text.trim(),
         phoneNumber: _completePhoneNumber,
       );
 
@@ -107,7 +96,6 @@ class _SignUpPageState extends State<SignUpPage> {
           phoneNumber: _completePhoneNumber,
           firstName: _firstNameController.text.trim(),
           lastName: _lastNameController.text.trim(),
-          email: _emailController.text.trim(),
         ),
       ),
     );
@@ -122,7 +110,6 @@ class _SignUpPageState extends State<SignUpPage> {
     _firstNameController.dispose();
     _lastNameController.dispose();
     _mobileController.dispose();
-    _emailController.dispose();
     super.dispose();
   }
 
@@ -244,26 +231,6 @@ class _SignUpPageState extends State<SignUpPage> {
                   ),
                   const SizedBox(height: 16),
                   _mobileField(),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.done,
-                    decoration: _inputDecoration('Email'),
-                    style: GoogleFonts.inter(fontSize: 16),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Please enter your email';
-                      }
-                      if (!RegExp(
-                        r'^[A-Za-z0-9._%+-]+@gmail\.com$',
-                        caseSensitive: false,
-                      ).hasMatch(value.trim())) {
-                        return 'Please use a Gmail address';
-                      }
-                      return null;
-                    },
-                  ),
                   const SizedBox(height: 20),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
