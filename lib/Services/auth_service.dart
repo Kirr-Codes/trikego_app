@@ -16,9 +16,8 @@ class AuthService {
   // Firebase Auth instance
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
 
-  // Google Sign-In instance - Lazy initialization to prevent conflicts
   GoogleSignIn? _googleSignIn;
-  
+
   GoogleSignIn get googleSignIn {
     _googleSignIn ??= GoogleSignIn();
     return _googleSignIn!;
@@ -74,7 +73,7 @@ class AuthService {
           if (_pendingUserProfile != null) {
             // This is a new registration, don't check canUserLogin yet
             _updateAuthState(AuthState.authenticated(user));
-            _log('New user authenticated during registration: ${user.uid}');
+
             return;
           }
 
@@ -85,9 +84,7 @@ class AuthService {
               user.uid,
             );
             _updateAuthState(AuthState.authenticated(user));
-            _log('User authenticated: ${user.uid}');
           } else {
-            _log('User not found in Firestore or inactive: ${user.uid}');
             await _firebaseAuth.signOut();
             _updateAuthState(
               AuthState.error('User not registered. Please sign up first.'),
@@ -96,13 +93,9 @@ class AuthService {
         } else {
           _currentUserData = null;
           _updateAuthState(AuthState.unauthenticated());
-          _log('User signed out');
         }
       });
-
-      _log('AuthService initialized successfully');
     } catch (e) {
-      _logError('Failed to initialize AuthService', e);
       _updateAuthState(AuthState.error('Failed to initialize authentication'));
     }
   }
@@ -113,7 +106,6 @@ class AuthService {
     UserProfile? userProfile,
   }) async {
     try {
-      _log('Starting phone authentication for: $phoneNumber');
       _updateAuthState(AuthState.sendingOtp());
 
       // Store pending data
@@ -129,13 +121,11 @@ class AuthService {
 
         verificationCompleted: (PhoneAuthCredential credential) async {
           try {
-            _log('Auto-verification completed');
             final result = await _signInWithCredential(credential);
             if (!completer.isCompleted) {
               completer.complete(result);
             }
           } catch (e) {
-            _logError('Auto-verification failed', e);
             if (!completer.isCompleted) {
               completer.complete(AuthResult.error(_getErrorMessage(e)));
             }
@@ -143,7 +133,6 @@ class AuthService {
         },
 
         verificationFailed: (FirebaseAuthException e) {
-          _logError('Phone verification failed', e);
           _updateAuthState(AuthState.error(_getErrorMessage(e)));
           if (!completer.isCompleted) {
             completer.complete(AuthResult.error(_getErrorMessage(e)));
@@ -151,7 +140,6 @@ class AuthService {
         },
 
         codeSent: (String verificationId, int? resendToken) {
-          _log('OTP sent successfully');
           _verificationId = verificationId;
           _resendToken = resendToken;
           _updateAuthState(AuthState.otpSent(phoneNumber));
@@ -163,14 +151,12 @@ class AuthService {
         },
 
         codeAutoRetrievalTimeout: (String verificationId) {
-          _log('Auto-retrieval timeout for verification: $verificationId');
           _verificationId = verificationId;
         },
       );
 
       return completer.future;
     } catch (e) {
-      _logError('Failed to start phone authentication', e);
       _updateAuthState(AuthState.error(_getErrorMessage(e)));
       return AuthResult.error(_getErrorMessage(e));
     }
@@ -191,7 +177,6 @@ class AuthService {
         return AuthResult.error(error);
       }
 
-      _log('Verifying OTP code');
       _updateAuthState(AuthState.verifyingOtp());
 
       final credential = PhoneAuthProvider.credential(
@@ -207,7 +192,6 @@ class AuthService {
 
       return result;
     } catch (e) {
-      _logError('OTP verification failed', e);
       final errorMessage = _getErrorMessage(e);
       _updateAuthState(AuthState.error(errorMessage));
       return AuthResult.error(errorMessage);
@@ -222,7 +206,6 @@ class AuthService {
       return AuthResult.error(error);
     }
 
-    _log('Resending OTP to: $_pendingPhoneNumber');
     return startPhoneAuth(
       phoneNumber: _pendingPhoneNumber!,
       userProfile: _pendingUserProfile,
@@ -232,15 +215,18 @@ class AuthService {
   /// Sign out current user
   Future<AuthResult> signOut() async {
     try {
-      _log('Signing out user');
       await _firebaseAuth.signOut();
-      await signOutFromGoogle(); // Re-enabled with proper isolation
+
+      await signOutFromGoogle();
+      // Re-enabled with proper isolation
       _clearPendingData();
+
       _currentUserData = null;
+
       _updateAuthState(AuthState.unauthenticated());
+
       return AuthResult.success('Signed out successfully');
     } catch (e) {
-      _logError('Sign out failed', e);
       return AuthResult.error(_getErrorMessage(e));
     }
   }
@@ -249,8 +235,6 @@ class AuthService {
   /// Implements account linking to unify phone and Gmail authentication
   Future<AuthResult> signInWithGmail() async {
     try {
-      _log('Starting Gmail sign-in process');
-
       // Step 1: Sign in with Google (lazy initialization)
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
@@ -258,7 +242,8 @@ class AuthService {
       }
 
       // Step 2: Get authentication details from Google
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
@@ -270,28 +255,30 @@ class AuthService {
 
       if (existingUserUid != null) {
         // Check if Gmail was previously unlinked
-        final isGmailUnlinked = await _checkGmailUnlinkedStatus(existingUserUid);
+        final isGmailUnlinked = await _checkGmailUnlinkedStatus(
+          existingUserUid,
+        );
         if (isGmailUnlinked) {
-          _log('Gmail $email was previously unlinked, preventing sign-in');
           return AuthResult.error(
             'This Gmail account was previously unlinked. Please sign in with your phone number first.',
             errorCode: 'GMAIL_PREVIOUSLY_UNLINKED',
           );
         }
-        
+
         // Scenario B: User has phone auth, wants to link Gmail
-        _log('Found existing user with email $email, attempting account linking');
-        return await _linkGmailToExistingAccount(credential, existingUserUid, email);
+
+        return await _linkGmailToExistingAccount(
+          credential,
+          existingUserUid,
+          email,
+        );
       } else {
         // Scenario A: New user or user with only Gmail auth
-        _log('No existing user found, proceeding with direct Gmail sign-in');
         return await _signInWithGmailCredential(credential, email);
       }
     } on FirebaseAuthException catch (e) {
-      _logError('Gmail sign-in failed with Firebase error', e);
       return AuthResult.error(_getErrorMessage(e));
     } catch (e) {
-      _logError('Gmail sign-in failed', e);
       return AuthResult.error('Gmail sign-in failed. Please try again.');
     }
   }
@@ -303,23 +290,22 @@ class AuthService {
     String email,
   ) async {
     try {
-      _log('Linking Gmail to existing account with UID: $existingUserUid');
-
       // Check if current user is already signed in
       final currentUser = _firebaseAuth.currentUser;
-      
+
       if (currentUser != null && currentUser.uid == existingUserUid) {
         // User is already signed in with the correct account
-        _log('User already signed in with correct account, updating email');
-        
+
         // Update email in Firestore if needed
         final firestoreResult = await _updateUserEmail(existingUserUid, email);
-        
+
         if (firestoreResult['success']) {
           // Clear the "unlinked" flag since Gmail is now linked again
           await _clearGmailUnlinkedFlag(existingUserUid);
-          
-          _currentUserData = await _firestoreService.getCompleteUserData(existingUserUid);
+
+          _currentUserData = await _firestoreService.getCompleteUserData(
+            existingUserUid,
+          );
           _updateAuthState(AuthState.authenticated(currentUser));
           return AuthResult.success('Gmail linked successfully');
         } else {
@@ -327,30 +313,38 @@ class AuthService {
         }
       } else {
         // Need to sign in with the existing account first
-        _log('Signing in with existing phone account for linking');
-        
+
         // Sign in with Gmail credential first
-        final userCredential = await _firebaseAuth.signInWithCredential(gmailCredential);
+        final userCredential = await _firebaseAuth.signInWithCredential(
+          gmailCredential,
+        );
         final gmailUser = userCredential.user;
-        
+
         if (gmailUser == null) {
           return AuthResult.error('Failed to sign in with Gmail');
         }
 
         // Check if this is a different account that needs linking
         if (gmailUser.uid != existingUserUid) {
-          _log('Attempting to link different UID accounts');
-          
           // Sign out the Gmail user
           await _firebaseAuth.signOut();
-          
+
           // This is a complex scenario - user has separate Gmail and phone accounts
-          return await _handleAccountLinkingConflict(existingUserUid, email, gmailCredential);
+          return await _handleAccountLinkingConflict(
+            existingUserUid,
+            email,
+            gmailCredential,
+          );
         } else {
           // Same UID - just update Firestore
-          final firestoreResult = await _updateUserEmail(existingUserUid, email);
+          final firestoreResult = await _updateUserEmail(
+            existingUserUid,
+            email,
+          );
           if (firestoreResult['success']) {
-            _currentUserData = await _firestoreService.getCompleteUserData(existingUserUid);
+            _currentUserData = await _firestoreService.getCompleteUserData(
+              existingUserUid,
+            );
             _updateAuthState(AuthState.authenticated(gmailUser));
             return AuthResult.success('Gmail linked successfully');
           } else {
@@ -359,8 +353,9 @@ class AuthService {
         }
       }
     } catch (e) {
-      _logError('Failed to link Gmail to existing account', e);
-      return AuthResult.error('Failed to link Gmail account. Please try again.');
+      return AuthResult.error(
+        'Failed to link Gmail account. Please try again.',
+      );
     }
   }
 
@@ -370,10 +365,10 @@ class AuthService {
     String email,
   ) async {
     try {
-      _log('Signing in with Gmail credential for new user');
-
       // Sign in with Gmail
-      final userCredential = await _firebaseAuth.signInWithCredential(gmailCredential);
+      final userCredential = await _firebaseAuth.signInWithCredential(
+        gmailCredential,
+      );
       final user = userCredential.user;
 
       if (user == null) {
@@ -384,12 +379,13 @@ class AuthService {
       final canLogin = await _firestoreService.canUserLogin(user.uid);
       if (canLogin) {
         // User exists in Firestore
-        _currentUserData = await _firestoreService.getCompleteUserData(user.uid);
+        _currentUserData = await _firestoreService.getCompleteUserData(
+          user.uid,
+        );
         _updateAuthState(AuthState.authenticated(user));
         return AuthResult.success('Signed in successfully with Gmail');
       } else {
         // New user - they need to complete registration
-        _log('New Gmail user, requiring registration completion');
         await _firebaseAuth.signOut();
         return AuthResult.error(
           'Gmail account not registered. Please complete registration first.',
@@ -397,7 +393,6 @@ class AuthService {
         );
       }
     } catch (e) {
-      _logError('Gmail credential sign-in failed', e);
       return AuthResult.error('Gmail sign-in failed. Please try again.');
     }
   }
@@ -409,20 +404,19 @@ class AuthService {
     AuthCredential gmailCredential,
   ) async {
     try {
-      _log('Handling account linking conflict for UID: $existingUserUid');
-
       // For now, we'll prevent linking and ask user to use phone login
       // In a production app, you might want to implement more sophisticated
       // account merging logic here
-      
+
       return AuthResult.error(
         'This Gmail account is not linked to your registered account. '
         'Please sign in with your phone number first, then link your Gmail account.',
         errorCode: 'ACCOUNT_NOT_LINKED',
       );
     } catch (e) {
-      _logError('Account linking conflict resolution failed', e);
-      return AuthResult.error('Account linking failed. Please contact support.');
+      return AuthResult.error(
+        'Account linking failed. Please contact support.',
+      );
     }
   }
 
@@ -435,8 +429,6 @@ class AuthService {
         return AuthResult.error('No user is currently signed in');
       }
 
-      _log('Linking Gmail to current user: ${currentUser.uid}');
-
       // Sign in with Google (lazy initialization)
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
@@ -444,7 +436,8 @@ class AuthService {
       }
 
       // Get authentication details
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
@@ -452,22 +445,27 @@ class AuthService {
 
       // Link the credential to current user
       await currentUser.linkWithCredential(credential);
-      
+
       // Update email in Firestore
-      final firestoreResult = await _updateUserEmail(currentUser.uid, googleUser.email);
+      final firestoreResult = await _updateUserEmail(
+        currentUser.uid,
+        googleUser.email,
+      );
 
       if (firestoreResult['success']) {
-        _currentUserData = await _firestoreService.getCompleteUserData(currentUser.uid);
+        _currentUserData = await _firestoreService.getCompleteUserData(
+          currentUser.uid,
+        );
         return AuthResult.success('Gmail linked successfully to your account');
       } else {
         return AuthResult.error(firestoreResult['message']);
       }
     } on FirebaseAuthException catch (e) {
-      _logError('Gmail linking failed with Firebase error', e);
       return AuthResult.error(_getErrorMessage(e));
     } catch (e) {
-      _logError('Gmail linking failed', e);
-      return AuthResult.error('Failed to link Gmail account. Please try again.');
+      return AuthResult.error(
+        'Failed to link Gmail account. Please try again.',
+      );
     }
   }
 
@@ -478,8 +476,6 @@ class AuthService {
       if (currentUser == null) {
         return AuthResult.error('No user is currently signed in');
       }
-
-      _log('Unlinking Gmail from current user: ${currentUser.uid}');
 
       // Check if user has Gmail provider
       final providers = currentUser.providerData
@@ -492,40 +488,37 @@ class AuthService {
 
       // Unlink Gmail provider
       await currentUser.unlink('google.com');
-      
+
       // Mark Gmail as unlinked in Firestore to prevent future Gmail sign-ins
       try {
         // Clear profile picture from Gmail by updating directly
         await FirebaseFirestore.instance
             .collection('users')
             .doc(currentUser.uid)
-            .update({
-          'profilePictureUrl': null,
-          'updatedAt': Timestamp.now(),
-        });
-        
+            .update({'profilePictureUrl': null, 'updatedAt': Timestamp.now()});
+
         // Also mark the Gmail as unlinked in the user document
         await _markGmailUnlinked(currentUser.uid);
       } catch (e) {
-        _log('Warning: Failed to update Firestore after unlinking Gmail: $e');
         // Continue anyway since the unlinking was successful
       }
-      
+
       // Sync user data (with error handling)
       try {
-        _currentUserData = await _firestoreService.getCompleteUserData(currentUser.uid);
+        _currentUserData = await _firestoreService.getCompleteUserData(
+          currentUser.uid,
+        );
       } catch (e) {
-        _log('Warning: Failed to sync user data after unlinking Gmail: $e');
         // Continue anyway since the unlinking was successful
       }
-      
+
       return AuthResult.success('Gmail unlinked successfully');
     } on FirebaseAuthException catch (e) {
-      _logError('Gmail unlinking failed with Firebase error', e);
       return AuthResult.error(_getErrorMessage(e));
     } catch (e) {
-      _logError('Gmail unlinking failed', e);
-      return AuthResult.error('Failed to unlink Gmail account. Please try again.');
+      return AuthResult.error(
+        'Failed to unlink Gmail account. Please try again.',
+      );
     }
   }
 
@@ -533,9 +526,10 @@ class AuthService {
   bool get hasGmailLinked {
     final currentUser = _firebaseAuth.currentUser;
     if (currentUser == null) return false;
-    
-    return currentUser.providerData
-        .any((provider) => provider.providerId == 'google.com');
+
+    return currentUser.providerData.any(
+      (provider) => provider.providerId == 'google.com',
+    );
   }
 
   /// Sign out from Google Sign-In - Isolated to prevent conflicts
@@ -543,11 +537,8 @@ class AuthService {
     try {
       if (_googleSignIn != null) {
         await _googleSignIn!.signOut();
-        _log('Signed out from Google Sign-In');
       }
-    } catch (e) {
-      _logError('Failed to sign out from Google', e);
-    }
+    } catch (e) {}
   }
 
   /// Helper method to get user UID by email
@@ -570,17 +561,17 @@ class AuthService {
   }
 
   /// Helper method to update user email
-  Future<Map<String, dynamic>> _updateUserEmail(String userId, String email) async {
+  Future<Map<String, dynamic>> _updateUserEmail(
+    String userId,
+    String email,
+  ) async {
     try {
       final firestore = FirebaseFirestore.instance;
       await firestore.collection('users').doc(userId).update({
         'email': email,
         'updatedAt': Timestamp.now(),
       });
-      return {
-        'success': true,
-        'message': 'Email updated successfully',
-      };
+      return {'success': true, 'message': 'Email updated successfully'};
     } catch (e) {
       return {
         'success': false,
@@ -600,14 +591,11 @@ class AuthService {
       final user = userCredential.user;
 
       if (user != null) {
-        _log('User signed in successfully: ${user.uid}');
-
         if (_pendingUserProfile != null) {
           final profile = _pendingUserProfile!;
           await user.updateDisplayName(
             '${profile.firstName} ${profile.lastName}',
           );
-          _log('User profile updated');
         }
 
         _updateAuthState(AuthState.authenticated(user));
@@ -618,7 +606,6 @@ class AuthService {
         return AuthResult.error(error);
       }
     } catch (e) {
-      _logError('Credential sign-in failed', e);
       final errorMessage = _getErrorMessage(e);
       _updateAuthState(AuthState.error(errorMessage));
       return AuthResult.error(errorMessage);
@@ -658,50 +645,26 @@ class AuthService {
     return 'An unexpected error occurred. Please try again.';
   }
 
-  void _log(String message) {
-    if (kDebugMode) {
-      print('🔐 AuthService: $message');
-    }
-  }
-
-  void _logError(String message, dynamic error) {
-    if (kDebugMode) {
-      print('❌ AuthService Error: $message - $error');
-    }
-  }
-
   /// Start phone number update verification
   Future<AuthResult> startPhoneNumberUpdate({
     required String newPhoneNumber,
   }) async {
     try {
-      _log('Starting phone number update verification for: $newPhoneNumber');
-
       await _firebaseAuth.verifyPhoneNumber(
         phoneNumber: newPhoneNumber,
         verificationCompleted: (PhoneAuthCredential credential) async {
-          _log('Phone verification completed automatically for update.');
           // Auto-verification completed, update phone number
           await _updatePhoneNumberWithCredential(credential);
         },
         verificationFailed: (FirebaseAuthException e) {
-          _log(
-            'Phone verification failed for update: ${e.code} - ${e.message}',
-          );
           _updateAuthState(AuthState.error(_getErrorMessage(e)));
         },
         codeSent: (String verificationId, int? resendToken) {
           _verificationId = verificationId;
           _resendToken = resendToken;
-          _log(
-            'OTP code sent for phone update. Verification ID: $verificationId',
-          );
         },
         codeAutoRetrievalTimeout: (String verificationId) {
           _verificationId = verificationId;
-          _log(
-            'Code auto-retrieval timeout for phone update. Verification ID: $verificationId',
-          );
         },
         timeout: const Duration(seconds: 60),
       );
@@ -711,12 +674,8 @@ class AuthService {
         _verificationId ?? '',
       );
     } on FirebaseAuthException catch (e) {
-      _log(
-        'FirebaseAuthException in startPhoneNumberUpdate: ${e.code} - ${e.message}',
-      );
       return AuthResult.error(_getErrorMessage(e));
     } catch (e) {
-      _log('Unexpected error in startPhoneNumberUpdate: $e');
       return AuthResult.error(
         'Failed to send OTP for phone number update. Please try again.',
       );
@@ -726,10 +685,7 @@ class AuthService {
   /// Verify OTP for phone number update
   Future<AuthResult> verifyPhoneNumberUpdateOtp(String otp) async {
     try {
-      _log('Attempting to verify OTP for phone number update: $otp');
-
       if (_verificationId == null) {
-        _log('Verification ID is null. Cannot verify OTP for phone update.');
         return AuthResult.error(
           'Verification session expired. Please resend OTP.',
         );
@@ -742,15 +698,10 @@ class AuthService {
 
       await _updatePhoneNumberWithCredential(credential);
 
-      _log('Phone number update verified successfully.');
       return AuthResult.success('Phone number updated successfully!');
     } on FirebaseAuthException catch (e) {
-      _log(
-        'FirebaseAuthException in verifyPhoneNumberUpdateOtp: ${e.code} - ${e.message}',
-      );
       return AuthResult.error(_getErrorMessage(e));
     } catch (e) {
-      _log('Unexpected error in verifyPhoneNumberUpdateOtp: $e');
       return AuthResult.error(
         'Failed to verify OTP for phone number update. Please try again.',
       );
@@ -769,10 +720,6 @@ class AuthService {
       // Update phone number in Firestore
       final newPhoneNumber = user.phoneNumber ?? '';
       await _firestoreService.updatePhoneNumber(newPhoneNumber);
-
-      _log(
-        'Phone number updated successfully in both Firebase Auth and Firestore',
-      );
     }
   }
 
@@ -786,11 +733,8 @@ class AuthService {
       final user = currentUser;
       if (user == null) {
         const error = 'No authenticated user found';
-        _log('Registration failed: $error');
         return AuthResult.error(error);
       }
-
-      _log('Registering user in Firestore: ${user.uid}');
 
       final result = await _firestoreService.registerUser(
         firstName: firstName,
@@ -807,14 +751,11 @@ class AuthService {
         // Update Firebase Auth display name
         await user.updateDisplayName('$firstName $lastName');
 
-        _log('User registered successfully in Firestore');
         return AuthResult.success('Registration completed successfully');
       } else {
-        _log('Firestore registration failed: ${result['message']}');
         return AuthResult.error(result['message']);
       }
     } catch (e) {
-      _logError('Registration failed', e);
       return AuthResult.error('Failed to register user. Please try again.');
     }
   }
@@ -832,21 +773,17 @@ class AuthService {
       final user = currentUser;
       if (user == null) {
         const error = 'No authenticated user found';
-        _log('Profile update failed: $error');
+
         return AuthResult.error(error);
       }
-
-      _log('Updating user profile for user: ${user.uid}');
 
       // Update Firebase Auth profile
       if (displayName != null && displayName.trim().isNotEmpty) {
         await user.updateDisplayName(displayName.trim());
-        _log('Display name updated to: $displayName');
       }
 
       if (photoURL != null && photoURL.trim().isNotEmpty) {
         await user.updatePhotoURL(photoURL.trim());
-        _log('Photo URL updated');
       }
 
       // Update Firestore profile
@@ -862,13 +799,12 @@ class AuthService {
             .collection('users')
             .doc(user.uid)
             .update({
-          'profilePictureUrl': profilePictureUrl,
-          'updatedAt': Timestamp.now(),
-        });
+              'profilePictureUrl': profilePictureUrl,
+              'updatedAt': Timestamp.now(),
+            });
       }
 
       if (!firestoreResult['success']) {
-        _log('Firestore profile update failed: ${firestoreResult['message']}');
         return AuthResult.error(firestoreResult['message']);
       }
 
@@ -876,13 +812,10 @@ class AuthService {
       _currentUserData = await _firestoreService.getCompleteUserData(user.uid);
       await user.reload();
 
-      _log('Profile updated successfully');
       return AuthResult.success('Profile updated successfully');
     } on FirebaseAuthException catch (e) {
-      _logError('Firebase profile update failed', e);
       return AuthResult.error(_getErrorMessage(e));
     } catch (e) {
-      _logError('Profile update failed', e);
       return AuthResult.error('Failed to update profile. Please try again.');
     }
   }
@@ -893,14 +826,11 @@ class AuthService {
       final result = await _firestoreService.updatePhoneNumber(newPhoneNumber);
 
       if (result['success']) {
-        _log('Phone number updated in Firestore');
         return AuthResult.success('Phone number updated successfully');
       } else {
-        _log('Firestore phone update failed: ${result['message']}');
         return AuthResult.error(result['message']);
       }
     } catch (e) {
-      _logError('Phone number update failed', e);
       return AuthResult.error(
         'Failed to update phone number. Please try again.',
       );
@@ -910,16 +840,12 @@ class AuthService {
   /// Check if phone number exists in Firestore
   Future<bool> checkPhoneNumberExists(String phoneNumber) async {
     try {
-      _log('Checking if phone number exists: $phoneNumber');
-
       final result = await _firestoreService.checkPhoneNumberExists(
         phoneNumber,
       );
 
-      _log('Phone number check result: $result');
       return result;
     } catch (e) {
-      _logError('Failed to check phone number existence', e);
       return false;
     }
   }
@@ -927,14 +853,10 @@ class AuthService {
   /// Check if email exists in Firestore
   Future<bool> checkEmailExists(String email) async {
     try {
-      _log('Checking if email exists: $email');
-
       final result = await _firestoreService.checkEmailExists(email);
 
-      _log('Email check result: $result');
       return result;
     } catch (e) {
-      _logError('Failed to check email existence', e);
       return false;
     }
   }
@@ -947,11 +869,8 @@ class AuthService {
         _currentUserData = await _firestoreService.getCompleteUserData(
           user.uid,
         );
-        _log('User data synced with Firestore');
       }
-    } catch (e) {
-      _logError('Failed to sync user data', e);
-    }
+    } catch (e) {}
   }
 
   void dispose() {
@@ -966,13 +885,12 @@ class AuthService {
           .collection('users')
           .doc(userId)
           .get();
-      
+
       if (!userDoc.exists) return false;
-      
+
       final data = userDoc.data();
       return data?['gmailUnlinked'] == true;
     } catch (e) {
-      _logError('Failed to check Gmail unlinked status', e);
       return false;
     }
   }
@@ -980,35 +898,23 @@ class AuthService {
   // Helper method to mark Gmail as unlinked
   Future<void> _markGmailUnlinked(String userId) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .update({
+      await FirebaseFirestore.instance.collection('users').doc(userId).update({
         'gmailUnlinked': true,
         'gmailUnlinkedAt': Timestamp.now(),
         'updatedAt': Timestamp.now(),
       });
-      _log('Gmail marked as unlinked for user: $userId');
-    } catch (e) {
-      _logError('Failed to mark Gmail as unlinked', e);
-    }
+    } catch (e) {}
   }
 
   // Helper method to clear Gmail unlinked flag
   Future<void> _clearGmailUnlinkedFlag(String userId) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .update({
+      await FirebaseFirestore.instance.collection('users').doc(userId).update({
         'gmailUnlinked': FieldValue.delete(),
         'gmailUnlinkedAt': FieldValue.delete(),
         'updatedAt': Timestamp.now(),
       });
-      _log('Gmail unlinked flag cleared for user: $userId');
-    } catch (e) {
-      _logError('Failed to clear Gmail unlinked flag', e);
-    }
+    } catch (e) {}
   }
 }
 
@@ -1062,7 +968,11 @@ class AuthResult {
   }
 
   factory AuthResult.error(String message, {String? errorCode}) {
-    return AuthResult._(isSuccess: false, message: message, errorCode: errorCode);
+    return AuthResult._(
+      isSuccess: false,
+      message: message,
+      errorCode: errorCode,
+    );
   }
 
   bool get isError => !isSuccess;

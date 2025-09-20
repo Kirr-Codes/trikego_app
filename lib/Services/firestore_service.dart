@@ -35,10 +35,6 @@ class FirestoreService {
         };
       }
 
-      print('Current user UID: ${user.uid}');
-      print('Phone number: ${user.phoneNumber}');
-      print('Is anonymous: ${user.isAnonymous}');
-
       // Check if user already exists
       final userExists = await checkUserExists(user.uid);
       if (userExists) {
@@ -205,10 +201,31 @@ class FirestoreService {
   /// Get complete user data (user + passenger)
   Future<UserWithPassenger?> getCompleteUserData(String userId) async {
     try {
-      final user = await getUser(userId);
+      // First try to get user by the provided userId (for phone users)
+      var user = await getUser(userId);
+      String? actualUserId = userId;
+
+      // If not found, try to find by email (for Gmail users)
+      if (user == null) {
+        final authUser = _auth.currentUser;
+        if (authUser?.email != null) {
+          final userQuery = await _firestore
+              .collection(_usersCollection)
+              .where('email', isEqualTo: authUser!.email!.toLowerCase().trim())
+              .where('isActive', isEqualTo: true)
+              .limit(1)
+              .get();
+
+          if (userQuery.docs.isNotEmpty) {
+            actualUserId = userQuery.docs.first.id;
+            user = await getUser(actualUserId);
+          }
+        }
+      }
+
       if (user == null) return null;
 
-      final passenger = await getPassenger(userId);
+      final passenger = await getPassenger(actualUserId);
       return UserWithPassenger(user: user, passenger: passenger);
     } catch (e) {
       return null;
@@ -232,31 +249,36 @@ class FirestoreService {
         };
       }
 
+      // Always use the current user's UID for updates
+      // This ensures profile picture updates always work
+      final userDocumentId = user.uid;
+
       final batch = _firestore.batch();
       bool hasUpdates = false;
 
-      // Update user document if email is provided
+      // Update user document if email or profile picture is provided
       if (email != null || profilePictureUrl != null) {
-        {
-          final userDocRef = _firestore
-              .collection(_usersCollection)
-              .doc(user.uid);
-          final updateData = <String, dynamic>{'updatedAt': Timestamp.now()};
+        final userDocRef = _firestore
+            .collection(_usersCollection)
+            .doc(userDocumentId);
 
-          if (email != null) updateData['email'] = email;
-          if (profilePictureUrl != null) {
-            updateData['profilePictureUrl'] = profilePictureUrl;
-          }
+        final updateData = <String, dynamic>{'updatedAt': Timestamp.now()};
 
-          batch.update(userDocRef, updateData);
-          hasUpdates = true;
+        if (email != null) updateData['email'] = email;
+        if (profilePictureUrl != null) {
+          updateData['profilePictureUrl'] = profilePictureUrl;
         }
+
+        batch.update(userDocRef, updateData);
+        hasUpdates = true;
       }
+
       // Update passenger document if name fields are provided
       if (firstName != null || lastName != null) {
         final passengerDocRef = _firestore
             .collection(_passengersCollection)
-            .doc(user.uid);
+            .doc(userDocumentId);
+
         final updateData = <String, dynamic>{'updatedAt': Timestamp.now()};
 
         if (firstName != null) updateData['firstName'] = firstName;
@@ -413,6 +435,117 @@ class FirestoreService {
       return await getCompleteUserData(user.uid);
     } catch (e) {
       return null;
+    }
+  }
+
+  /// Get user UID by email address
+  /// Used for Gmail login to find existing phone auth accounts
+  Future<String?> getUserUidByEmail(String email) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection(_usersCollection)
+          .where('email', isEqualTo: email)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        return querySnapshot.docs.first.id; // Document ID = UID
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Update user email in Firestore
+  /// Used when linking Gmail to existing phone auth account
+  Future<Map<String, dynamic>> updateUserEmail(
+    String userId,
+    String email,
+  ) async {
+    try {
+      await _firestore.collection(_usersCollection).doc(userId).update({
+        'email': email,
+        'updatedAt': Timestamp.now(),
+      });
+
+      return {'success': true, 'message': 'Email updated successfully'};
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Failed to update email: ${e.toString()}',
+      };
+    }
+  }
+
+  /// Get user by email (for account linking scenarios)
+  Future<AppUser?> getUserByEmail(String email) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection(_usersCollection)
+          .where('email', isEqualTo: email)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final doc = querySnapshot.docs.first;
+        return AppUser.fromFirestore(doc);
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Mark Gmail as unlinked to prevent future Gmail sign-ins
+  Future<Map<String, dynamic>> markGmailUnlinked(String userId) async {
+    try {
+      final userDocRef = _firestore.collection(_usersCollection).doc(userId);
+      await userDocRef.update({
+        'gmailUnlinked': true,
+        'gmailUnlinkedAt': Timestamp.now(),
+        'updatedAt': Timestamp.now(),
+      });
+      return {'success': true, 'message': 'Gmail marked as unlinked'};
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Failed to mark Gmail as unlinked: ${e.toString()}',
+        'error': 'MARK_UNLINKED_ERROR',
+      };
+    }
+  }
+
+  // Check if Gmail was previously unlinked
+  Future<bool> isGmailUnlinked(String userId) async {
+    try {
+      final userDoc = await _firestore.collection(_usersCollection).doc(userId).get();
+      if (!userDoc.exists) return false;
+      final data = userDoc.data() as Map<String, dynamic>?;
+      return data?['gmailUnlinked'] == true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Clear the Gmail unlinked flag when Gmail is linked again
+  Future<Map<String, dynamic>> clearGmailUnlinkedFlag(String userId) async {
+    try {
+      final userDocRef = _firestore.collection(_usersCollection).doc(userId);
+      await userDocRef.update({
+        'gmailUnlinked': FieldValue.delete(),
+        'gmailUnlinkedAt': FieldValue.delete(),
+        'updatedAt': Timestamp.now(),
+      });
+      return {'success': true, 'message': 'Gmail unlinked flag cleared'};
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Failed to clear Gmail unlinked flag: ${e.toString()}',
+        'error': 'CLEAR_UNLINKED_FLAG_ERROR',
+      };
     }
   }
 }

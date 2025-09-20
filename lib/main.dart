@@ -3,7 +3,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:trikego_app/Services/auth_service.dart';
 import 'screens/landing_page.dart';
 import 'screens/signup_page.dart';
-import 'screens/signin_email_page.dart';
 import 'screens/otp_page.dart';
 import 'screens/signin_page.dart';
 import 'screens/edit_profile_page.dart';
@@ -95,7 +94,6 @@ class MyApp extends StatelessWidget {
       routes: {
         '/': (context) => const LandingPage(),
         '/signin': (context) => const SignInPage(),
-        '/signin_email': (context) => const SignInEmailPage(),
         '/signup': (context) => const SignUpPage(),
         '/otp': (context) {
           final args = ModalRoute.of(context)!.settings.arguments as String?;
