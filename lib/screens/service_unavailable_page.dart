@@ -3,7 +3,14 @@ import 'package:google_fonts/google_fonts.dart';
 import '../main.dart';
 
 class ServiceUnavailablePage extends StatelessWidget {
-  const ServiceUnavailablePage({super.key});
+  final String? userLocation;
+  final String? reason;
+
+  const ServiceUnavailablePage({
+    super.key,
+    this.userLocation,
+    this.reason,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -28,9 +35,51 @@ class ServiceUnavailablePage extends StatelessWidget {
 
               const SizedBox(height: 15),
 
+              // User Location Info
+              if (userLocation != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.location_on, color: Colors.red.shade600, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Your current location:',
+                              style: GoogleFonts.inter(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              userLocation!,
+                              style: GoogleFonts.inter(
+                                fontSize: 14,
+                                color: Colors.red.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+
               // Explanatory Text
               Text(
-                'Ride booking is exclusively available for passengers in Paombong, Bulacan. Please ensure that you are within our service area to proceed.',
+                reason ?? 'Ride booking is exclusively available for passengers in Paombong, Bulacan. Please ensure that you are within our service area to proceed.',
                 style: GoogleFonts.inter(
                   fontSize: 16,
                   fontWeight: FontWeight.w400,

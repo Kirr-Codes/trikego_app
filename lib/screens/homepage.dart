@@ -11,6 +11,7 @@ import '../utils/snackbar_utils.dart';
 import '../utils/dialog_utils.dart';
 import '../main.dart' show AppColors;
 import 'destination_search_screen.dart';
+import 'service_unavailable_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -37,7 +38,12 @@ class _HomePageState extends State<HomePage> {
   Set<Marker> _destinationMarkers = {};
   bool _isCalculatingRoute = false;
 
-  static const LatLng _defaultLocation = LatLng(14.5995, 120.9842); // Manila
+  // Service availability state
+  bool _isServiceAvailable = true;
+  String _serviceUnavailableReason = '';
+
+  static const LatLng _defaultLocation = LatLng(14.8312, 120.7895); // Paombong Bulacan Municipal Hall
+  static const double _serviceRadiusKm = 2.0; // 2km service radius
 
   @override
   void initState() {
@@ -63,6 +69,9 @@ class _HomePageState extends State<HomePage> {
         setState(() => _currentPosition = location);
         _updateMapCamera(location);
 
+        // Check service availability
+        _checkServiceAvailability(location);
+
         // Get address for this location
         _updateAddress(location);
       }
@@ -81,7 +90,7 @@ class _HomePageState extends State<HomePage> {
     if (!success && mounted) {
       setState(() {
         _currentPosition = _defaultLocation;
-        _currentAddress = 'Manila, Philippines (Default)';
+        _currentAddress = 'Paombong, Bulacan (Default)';
       });
       _updateMapCamera(_defaultLocation);
     }
@@ -98,6 +107,24 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         setState(() => _currentAddress = 'Unable to get address');
       }
+    }
+  }
+
+  /// Check if user is within service area
+  void _checkServiceAvailability(LatLng userLocation) {
+    final distance = RouteService.calculateDistance(_defaultLocation, userLocation);
+    final distanceKm = distance / 1000;
+    
+    if (distanceKm > _serviceRadiusKm) {
+      setState(() {
+        _isServiceAvailable = false;
+        _serviceUnavailableReason = 'You are ${distanceKm.toStringAsFixed(1)}km away from our service area';
+      });
+    } else {
+      setState(() {
+        _isServiceAvailable = true;
+        _serviceUnavailableReason = '';
+      });
     }
   }
 
@@ -141,6 +168,20 @@ class _HomePageState extends State<HomePage> {
   Future<void> _openDestinationSearch() async {
     if (_currentPosition == null) {
       context.showError('Please wait for your location to be detected.');
+      return;
+    }
+
+    // Check if service is available
+    if (!_isServiceAvailable) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ServiceUnavailablePage(
+            userLocation: _currentAddress,
+            reason: _serviceUnavailableReason,
+          ),
+        ),
+      );
       return;
     }
 
@@ -428,9 +469,9 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 6),
           _locationField(
             hintText: 'Your location now',
-            displayText: _currentAddress,
+            displayText: _isServiceAvailable ? _currentAddress : _serviceUnavailableReason,
             icon: Icons.location_pin,
-            iconColor: Colors.green,
+            iconColor: _isServiceAvailable ? Colors.green : Colors.red,
             isCurrentLocation: true,
           ),
           const SizedBox(height: 12),

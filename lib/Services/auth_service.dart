@@ -431,7 +431,7 @@ class AuthService {
       // Check if this Gmail account is already associated with another user
       final email = googleUser.email;
       final existingUserUid = await _getUserUidByEmail(email);
-      
+
       if (existingUserUid != null && existingUserUid != currentUser.uid) {
         // This Gmail is already associated with a different user in Firestore
         return AuthResult.error(
@@ -759,7 +759,9 @@ class AuthService {
             .collection('users')
             .doc(user.uid)
             .update({
-              'profilePictureUrl': profilePictureUrl.trim().isNotEmpty ? profilePictureUrl : null,
+              'profilePictureUrl': profilePictureUrl.trim().isNotEmpty
+                  ? profilePictureUrl
+                  : null,
               'updatedAt': Timestamp.now(),
             });
       }
@@ -846,9 +848,11 @@ class AuthService {
   /// Delete user's profile pictures from Firebase Storage
   Future<void> _deleteUserProfilePictures(String userId) async {
     try {
-      final storageRef = FirebaseStorage.instance.ref().child('profile_pictures');
+      final storageRef = FirebaseStorage.instance.ref().child(
+        'profile_pictures',
+      );
       final listResult = await storageRef.listAll();
-      
+
       // Find and delete all profile pictures for this user
       for (final item in listResult.items) {
         if (item.name.startsWith('${userId}_')) {

@@ -83,19 +83,20 @@ class _OtpPageState extends State<OtpPage> {
 
   Future<void> _registerUserInFirestore() async {
     try {
-        
-      final result = await _authService.registerUserInFirestore(
-        firstName: widget.firstName,
-        lastName: widget.lastName,
-      ).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => AuthResult.error('Registration timeout. Please try again.'),
-      );
+      final result = await _authService
+          .registerUserInFirestore(
+            firstName: widget.firstName,
+            lastName: widget.lastName,
+          )
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () =>
+                AuthResult.error('Registration timeout. Please try again.'),
+          );
 
       if (!mounted) return;
 
       if (result.isSuccess) {
-    
         Navigator.pushNamedAndRemoveUntil(
           context,
           '/homepage',
@@ -204,7 +205,9 @@ class _OtpPageState extends State<OtpPage> {
               ),
               const SizedBox(height: 24),
               GestureDetector(
-                onTap: _secondsRemaining == 0 && !_isResending ? _resendOtp : null,
+                onTap: _secondsRemaining == 0 && !_isResending
+                    ? _resendOtp
+                    : null,
                 behavior: HitTestBehavior.opaque,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -275,5 +278,4 @@ class _OtpPageState extends State<OtpPage> {
       ),
     );
   }
-
 }
