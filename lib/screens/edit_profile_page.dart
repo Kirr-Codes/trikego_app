@@ -23,7 +23,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _mobileController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
   final AuthService _authService = AuthService();
   final ImagePicker _imagePicker = ImagePicker();
 
@@ -33,7 +32,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   String _originalFirstName = '';
   String _originalLastName = '';
   String _originalPhone = '';
-  String _originalEmail = '';
 
   // Profile photo
   String? _profilePhotoUrl;
@@ -43,7 +41,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   bool _isEditingFirstName = false;
   bool _isEditingLastName = false;
   bool _isEditingPhone = false;
-  bool _isEditingEmail = false;
 
   @override
   void initState() {
@@ -62,7 +59,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _firstNameController.dispose();
     _lastNameController.dispose();
     _mobileController.dispose();
-    _emailController.dispose();
     super.dispose();
   }
 
@@ -92,10 +88,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
         }
       }
 
-      // Load email from user data
-      final email = userData.user.email;
-      _emailController.text = email;
-      _originalEmail = email;
 
       // Load profile photo URL from user data
       _profilePhotoUrl = userData.user.profilePictureUrl;
@@ -107,7 +99,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return _firstNameController.text.trim() != _originalFirstName ||
         _lastNameController.text.trim() != _originalLastName ||
         _mobileController.text.trim() != _originalPhone ||
-        _emailController.text.trim() != _originalEmail ||
         _selectedImageFile != null;
   }
 
@@ -266,7 +257,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
           _selectedImageFile = File(image.path);
           _profilePhotoUrl = null; // Clear the URL when a new file is selected
         });
-        context.showSuccess('Photo captured successfully');
       }
     } catch (e) {
       context.showError('Failed to access camera: ${e.toString()}');
@@ -288,7 +278,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           _selectedImageFile = File(image.path);
           _profilePhotoUrl = null; // Clear the URL when a new file is selected
         });
-        context.showSuccess('Photo selected successfully');
+        
       }
     } catch (e) {
       context.showError('Failed to access gallery: ${e.toString()}');
@@ -296,12 +286,89 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   /// Remove profile photo
-  void _removeProfilePhoto() {
-    setState(() {
-      _selectedImageFile = null;
-      _profilePhotoUrl = null;
-    });
-    context.showInfo('Profile photo removed');
+  void _removeProfilePhoto() async {
+    try {
+      // Delete the current profile picture from Firebase Storage if it exists
+      if (_profilePhotoUrl != null && _profilePhotoUrl!.isNotEmpty) {
+        await _deleteOldProfilePicture(_profilePhotoUrl);
+      }
+      
+      // Update the profile in Firestore to remove the profile picture URL
+      final result = await _authService.updateProfile(
+        displayName: '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'.trim(),
+        photoURL: '', // Set to empty string to remove profile picture
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+        profilePictureUrl: '', // Set to empty string to remove profile picture
+      );
+
+      if (!mounted) return;
+
+      if (result.isSuccess) {
+        setState(() {
+          _selectedImageFile = null;
+          _profilePhotoUrl = null;
+        });
+        
+      } else {
+        context.showError('Failed to remove profile photo: ${result.message}');
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showError('Failed to remove profile photo: ${e.toString()}');
+      }
+    }
+  }
+
+  /// Delete old profile picture from Firebase Storage
+  Future<void> _deleteOldProfilePicture(String? oldProfilePictureUrl) async {
+    if (oldProfilePictureUrl == null || oldProfilePictureUrl.isEmpty) {
+      return; // No old picture to delete
+    }
+
+    try {
+      // Extract the file path from the URL
+      final uri = Uri.parse(oldProfilePictureUrl);
+      final pathSegments = uri.pathSegments;
+      
+      // Firebase Storage URLs are URL-encoded, so we need to decode them
+      // Look for the 'o' segment which contains the encoded path
+      final oIndex = pathSegments.indexOf('o');
+      if (oIndex != -1 && oIndex + 1 < pathSegments.length) {
+        final encodedPath = pathSegments[oIndex + 1];
+        
+        // Decode the URL-encoded path
+        final decodedPath = Uri.decodeComponent(encodedPath);
+        
+        // Split the decoded path to get folder and filename
+        final pathParts = decodedPath.split('/');
+        
+        if (pathParts.length >= 2 && pathParts[0] == 'profile_pictures') {
+          final fileName = pathParts[1];
+          
+          // Create reference to the old file
+          final oldRef = FirebaseStorage.instance
+              .ref()
+              .child('profile_pictures')
+              .child(fileName);
+          
+          // Check if file exists before trying to delete
+          try {
+            await oldRef.getMetadata();
+            // Delete the old file
+            await oldRef.delete();
+          } catch (e) {
+            if (!e.toString().contains('object-not-found')) {
+              // Try to delete anyway if it's not a "not found" error
+              await oldRef.delete();
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Don't throw error for deletion failures - just log it
+      // The upload should still proceed even if old picture deletion fails
+    }
   }
 
   /// Upload image to Firebase Storage and update profile
@@ -312,6 +379,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
         context.showError('No authenticated user found');
         return null;
       }
+
+      // Delete old profile picture if it exists
+      await _deleteOldProfilePicture(_profilePhotoUrl);
 
       // Create a reference to the file location in Firebase Storage
       final ref = FirebaseStorage.instance
@@ -384,14 +454,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
       // Handle image upload if a new image was selected
       String? profilePictureUrl = _profilePhotoUrl;
       if (_selectedImageFile != null) {
-        context.showLoading('Uploading image...');
+        
         profilePictureUrl = await _uploadImageToStorage(_selectedImageFile!);
         if (profilePictureUrl == null) {
           setState(() => _isLoading = false);
-          context.hideSnackBar(); // Hide loading snackbar
+          
           return;
         }
-        context.hideSnackBar(); // Hide loading snackbar
+        
       }
 
       // Update profile information in both Firebase Auth and Firestore
@@ -400,7 +470,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
         photoURL: profilePictureUrl,
         firstName: firstName,
         lastName: lastName,
-        email: _emailController.text.trim(),
         profilePictureUrl: profilePictureUrl,
       );
 
@@ -410,7 +479,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
         // Update original values after successful update
         _originalFirstName = _firstNameController.text.trim();
         _originalLastName = _lastNameController.text.trim();
-        _originalEmail = _emailController.text.trim();
         
         // Clear selected image file and update profile photo URL
         setState(() {
@@ -579,7 +647,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
       _isEditingFirstName = false;
       _isEditingLastName = false;
       _isEditingPhone = false;
-      _isEditingEmail = false;
     });
     FocusScope.of(context).unfocus(); // Hide keyboard
   }
@@ -772,50 +839,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
                         // Mobile Number Field
                         _buildPhoneField(),
-                        const SizedBox(height: 20),
-
-                        // Email Field
-                        TextFormField(
-                          controller: _emailController,
-                          readOnly: !_isEditingEmail,
-                          decoration: _inputDecoration(
-                            'Gmail',
-                            isReadOnly: !_isEditingEmail,
-                          ),
-                          style: GoogleFonts.inter(
-                            fontSize: 16,
-                            color: _isEditingEmail
-                                ? Colors.black
-                                : Colors.grey.shade700,
-                          ),
-                          keyboardType: TextInputType.emailAddress,
-                          onTap: !_isEditingEmail
-                              ? () {
-                                  setState(() {
-                                    _isEditingEmail = true;
-                                  });
-                                }
-                              : null,
-                          onChanged: (value) => setState(
-                            () {},
-                          ), // Trigger rebuild to update button state
-                          onFieldSubmitted: (value) {
-                            setState(() {
-                              _isEditingEmail = false;
-                            });
-                          },
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Please enter your email';
-                            }
-                            if (!RegExp(
-                              r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                            ).hasMatch(value.trim())) {
-                              return 'Please enter a valid email address';
-                            }
-                            return null;
-                          },
-                        ),
 
                         // Add extra space at bottom for keyboard
                         const SizedBox(height: 100),

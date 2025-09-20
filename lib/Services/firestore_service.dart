@@ -148,22 +148,6 @@ class FirestoreService {
     }
   }
 
-  /// Check if email exists in Firestore
-  Future<bool> checkEmailExists(String email) async {
-    try {
-      final querySnapshot = await _firestore
-          .collection(_usersCollection)
-          .where('email', isEqualTo: email)
-          .where('isActive', isEqualTo: true)
-          .limit(1)
-          .get();
-
-      return querySnapshot.docs.isNotEmpty;
-    } catch (e) {
-      return false;
-    }
-  }
-
   /// Get user data from Firestore
   Future<AppUser?> getUser(String userId) async {
     try {
@@ -236,7 +220,6 @@ class FirestoreService {
   Future<Map<String, dynamic>> updateUserProfile({
     String? firstName,
     String? lastName,
-    String? email,
     String? profilePictureUrl,
   }) async {
     try {
@@ -256,18 +239,16 @@ class FirestoreService {
       final batch = _firestore.batch();
       bool hasUpdates = false;
 
-      // Update user document if email or profile picture is provided
-      if (email != null || profilePictureUrl != null) {
+      // Update user document if profile picture is provided
+      if (profilePictureUrl != null) {
         final userDocRef = _firestore
             .collection(_usersCollection)
             .doc(userDocumentId);
 
-        final updateData = <String, dynamic>{'updatedAt': Timestamp.now()};
-
-        if (email != null) updateData['email'] = email;
-        if (profilePictureUrl != null) {
-          updateData['profilePictureUrl'] = profilePictureUrl;
-        }
+        final updateData = <String, dynamic>{
+          'updatedAt': Timestamp.now(),
+          'profilePictureUrl': profilePictureUrl,
+        };
 
         batch.update(userDocRef, updateData);
         hasUpdates = true;
@@ -308,6 +289,54 @@ class FirestoreService {
     }
   }
 
+  /// Delete user and all associated data
+  Future<Map<String, dynamic>> deleteUser(String userId) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return {
+          'success': false,
+          'message': 'No authenticated user found',
+          'error': 'NO_AUTH_USER',
+        };
+      }
+
+      // Verify the user is trying to delete their own account
+      if (user.uid != userId) {
+        return {
+          'success': false,
+          'message': 'Unauthorized: Can only delete your own account',
+          'error': 'UNAUTHORIZED',
+        };
+      }
+
+      // Use batch write for atomic operation
+      final batch = _firestore.batch();
+
+      // Delete user document
+      final userDocRef = _firestore.collection(_usersCollection).doc(userId);
+      batch.delete(userDocRef);
+
+      // Delete passenger document
+      final passengerDocRef = _firestore.collection(_passengersCollection).doc(userId);
+      batch.delete(passengerDocRef);
+
+      // Commit the batch
+      await batch.commit();
+
+      return {
+        'success': true,
+        'message': 'User data deleted successfully from Firestore',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Failed to delete user data: ${e.toString()}',
+        'error': 'DELETE_ERROR',
+      };
+    }
+  }
+
   /// Update phone number (requires re-authentication)
   Future<Map<String, dynamic>> updatePhoneNumber(String newPhoneNumber) async {
     try {
@@ -336,86 +365,6 @@ class FirestoreService {
     }
   }
 
-  /// Soft delete user (mark as inactive)
-  Future<Map<String, dynamic>> deleteUser() async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) {
-        return {
-          'success': false,
-          'message': 'No authenticated user found',
-          'error': 'NO_AUTH_USER',
-        };
-      }
-
-      final batch = _firestore.batch();
-      final now = Timestamp.now();
-
-      // Mark user as inactive
-      batch.update(_firestore.collection(_usersCollection).doc(user.uid), {
-        'isActive': false,
-        'deletedAt': now,
-        'updatedAt': now,
-      });
-
-      // Mark passenger as inactive
-      batch.update(_firestore.collection(_passengersCollection).doc(user.uid), {
-        'isActive': false,
-        'deletedAt': now,
-        'updatedAt': now,
-      });
-
-      await batch.commit();
-
-      return {'success': true, 'message': 'User deleted successfully'};
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'Failed to delete user: ${e.toString()}',
-        'error': 'DELETE_ERROR',
-      };
-    }
-  }
-
-  /// Get user statistics (for admin purposes)
-  Future<Map<String, dynamic>> getUserStats() async {
-    try {
-      final usersSnapshot = await _firestore.collection(_usersCollection).get();
-
-      int totalUsers = 0;
-      int activeUsers = 0;
-      int passengers = 0;
-
-      for (var doc in usersSnapshot.docs) {
-        final data = doc.data();
-        totalUsers++;
-        if (data['isActive'] == true) {
-          activeUsers++;
-          if (data['userType'] == 1) {
-            // Passenger
-            passengers++;
-          }
-        }
-      }
-
-      return {
-        'success': true,
-        'data': {
-          'totalUsers': totalUsers,
-          'activeUsers': activeUsers,
-          'passengers': passengers,
-          'drivers': activeUsers - passengers,
-        },
-      };
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'Failed to get user statistics: ${e.toString()}',
-        'error': 'STATS_ERROR',
-      };
-    }
-  }
-
   /// Check if user can login (exists and is active)
   Future<bool> canUserLogin(String userId) async {
     try {
@@ -423,18 +372,6 @@ class FirestoreService {
       return user != null && user.isActive;
     } catch (e) {
       return false;
-    }
-  }
-
-  /// Get current user's complete data
-  Future<UserWithPassenger?> getCurrentUserData() async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) return null;
-
-      return await getCompleteUserData(user.uid);
-    } catch (e) {
-      return null;
     }
   }
 
@@ -475,76 +412,6 @@ class FirestoreService {
       return {
         'success': false,
         'message': 'Failed to update email: ${e.toString()}',
-      };
-    }
-  }
-
-  /// Get user by email (for account linking scenarios)
-  Future<AppUser?> getUserByEmail(String email) async {
-    try {
-      final querySnapshot = await _firestore
-          .collection(_usersCollection)
-          .where('email', isEqualTo: email)
-          .where('isActive', isEqualTo: true)
-          .limit(1)
-          .get();
-
-      if (querySnapshot.docs.isNotEmpty) {
-        final doc = querySnapshot.docs.first;
-        return AppUser.fromFirestore(doc);
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // Mark Gmail as unlinked to prevent future Gmail sign-ins
-  Future<Map<String, dynamic>> markGmailUnlinked(String userId) async {
-    try {
-      final userDocRef = _firestore.collection(_usersCollection).doc(userId);
-      await userDocRef.update({
-        'gmailUnlinked': true,
-        'gmailUnlinkedAt': Timestamp.now(),
-        'updatedAt': Timestamp.now(),
-      });
-      return {'success': true, 'message': 'Gmail marked as unlinked'};
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'Failed to mark Gmail as unlinked: ${e.toString()}',
-        'error': 'MARK_UNLINKED_ERROR',
-      };
-    }
-  }
-
-  // Check if Gmail was previously unlinked
-  Future<bool> isGmailUnlinked(String userId) async {
-    try {
-      final userDoc = await _firestore.collection(_usersCollection).doc(userId).get();
-      if (!userDoc.exists) return false;
-      final data = userDoc.data() as Map<String, dynamic>?;
-      return data?['gmailUnlinked'] == true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // Clear the Gmail unlinked flag when Gmail is linked again
-  Future<Map<String, dynamic>> clearGmailUnlinkedFlag(String userId) async {
-    try {
-      final userDocRef = _firestore.collection(_usersCollection).doc(userId);
-      await userDocRef.update({
-        'gmailUnlinked': FieldValue.delete(),
-        'gmailUnlinkedAt': FieldValue.delete(),
-        'updatedAt': Timestamp.now(),
-      });
-      return {'success': true, 'message': 'Gmail unlinked flag cleared'};
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'Failed to clear Gmail unlinked flag: ${e.toString()}',
-        'error': 'CLEAR_UNLINKED_FLAG_ERROR',
       };
     }
   }

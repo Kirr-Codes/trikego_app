@@ -225,7 +225,6 @@ class _HomePageState extends State<HomePage> {
         // Fit camera to show both start and end points
         _fitCameraToRoute(route.points);
 
-        context.showSuccess('Route calculated successfully!');
       } else {
         if (mounted) {
           context.showError('Unable to calculate route. Please try again.');

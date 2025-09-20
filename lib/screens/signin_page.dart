@@ -108,7 +108,7 @@ class _SignInPageState extends State<SignInPage> {
       if (!mounted) return;
 
       if (result.isSuccess && result.hasUser) {
-        context.showSuccess('Signed in successfully!');
+        
         Navigator.pushNamedAndRemoveUntil(
           context,
           '/homepage',
@@ -136,7 +136,6 @@ class _SignInPageState extends State<SignInPage> {
       if (!mounted) return;
 
       if (result.isSuccess) {
-        context.showSuccess('Signed in successfully with Gmail!');
         Navigator.pushNamedAndRemoveUntil(
           context,
           '/homepage',

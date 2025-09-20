@@ -97,12 +97,7 @@ class MyApp extends StatelessWidget {
         '/signup': (context) => const SignUpPage(),
         '/otp': (context) {
           final args = ModalRoute.of(context)!.settings.arguments as String?;
-          return OtpPage(
-            phoneNumber: args ?? '',
-            lastName: '',
-            firstName: '',
-            email: '',
-          );
+          return OtpPage(phoneNumber: args ?? '', lastName: '', firstName: '');
         },
         '/homepage': (context) => const HomePage(),
         '/edit_profile': (context) => const EditProfilePage(),
