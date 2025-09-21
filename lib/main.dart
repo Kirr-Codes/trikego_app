@@ -10,6 +10,7 @@ import 'screens/settings_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/homepage.dart';
+import 'screens/history_screen.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -100,6 +101,7 @@ class MyApp extends StatelessWidget {
           return OtpPage(phoneNumber: args ?? '', lastName: '', firstName: '');
         },
         '/homepage': (context) => const HomePage(),
+        '/history': (context) => const HistoryScreen(),
         '/edit_profile': (context) => const EditProfilePage(),
         '/settings': (context) => const SettingsScreen(),
       },
