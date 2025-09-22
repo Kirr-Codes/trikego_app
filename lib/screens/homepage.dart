@@ -6,6 +6,9 @@ import '../Services/location_service.dart';
 import '../Services/address_service.dart';
 import '../Services/places_service.dart';
 import '../Services/route_service.dart';
+import '../Services/booking_service.dart';
+import '../models/fare_config_model.dart';
+import '../models/booking_model.dart';
 import '../widgets/profile_drawer.dart';
 import '../widgets/circle_icon_button_widget.dart';
 import '../widgets/search_panel_widget.dart';
@@ -25,6 +28,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final LocationService _locationService = LocationService();
   final AddressService _addressService = AddressService();
+  final BookingService _bookingService = BookingService();
   GoogleMapController? _mapController;
 
   LatLng? _currentPosition;
@@ -47,22 +51,48 @@ class _HomePageState extends State<HomePage> {
   // Booking state
   bool _showBookingInformation = false;
   int _passengerCount = 1;
+  EnhancedFareCalculation? _currentFareCalculation;
+  Booking? _activeBooking;
+  StreamSubscription<Booking?>? _bookingSubscription;
 
-  static const LatLng _defaultLocation = LatLng(14.8312, 120.7895); // Paombong Bulacan Municipal Hall
+  static const LatLng _defaultLocation = LatLng(
+    14.8312,
+    120.7895,
+  ); // Paombong Bulacan Municipal Hall
   static const double _serviceRadiusKm = 2.0; // 2km service radius
 
   @override
   void initState() {
     super.initState();
     _initializeLocation();
+    _initializeBookingService();
   }
 
   @override
   void dispose() {
     _locationSubscription?.cancel();
     _stateSubscription?.cancel();
+    _bookingSubscription?.cancel();
     _locationService.stopTracking();
     super.dispose();
+  }
+
+  /// Initialize booking service and set up listeners
+  void _initializeBookingService() {
+    // Listen to active booking updates
+    _bookingSubscription = _bookingService.activeBookingStream.listen((
+      booking,
+    ) {
+      if (mounted) {
+        setState(() {
+          _activeBooking = booking;
+          // If there's an active booking, hide booking information UI
+          if (booking != null && booking.isActive) {
+            _showBookingInformation = false;
+          }
+        });
+      }
+    });
   }
 
   /// Initialize location service and set up listeners
@@ -118,13 +148,17 @@ class _HomePageState extends State<HomePage> {
 
   /// Check if user is within service area
   void _checkServiceAvailability(LatLng userLocation) {
-    final distance = RouteService.calculateDistance(_defaultLocation, userLocation);
+    final distance = RouteService.calculateDistance(
+      _defaultLocation,
+      userLocation,
+    );
     final distanceKm = distance / 1000;
-    
+
     if (distanceKm > _serviceRadiusKm) {
       setState(() {
         _isServiceAvailable = false;
-        _serviceUnavailableReason = 'You are ${distanceKm.toStringAsFixed(1)}km away from our service area';
+        _serviceUnavailableReason =
+            'You are ${distanceKm.toStringAsFixed(1)}km away from our service area';
       });
     } else {
       setState(() {
@@ -240,8 +274,18 @@ class _HomePageState extends State<HomePage> {
       );
 
       if (route != null && mounted) {
+        // Calculate enhanced fare for current passenger count
+        final fareCalculation = await _bookingService.calculateEnhancedFare(
+          pickupLatitude: _currentPosition!.latitude,
+          pickupLongitude: _currentPosition!.longitude,
+          route: route,
+          passengerCount: _passengerCount,
+          vehicleType: 'tricycle',
+        );
+
         setState(() {
           _currentRoute = route;
+          _currentFareCalculation = fareCalculation;
           _polylines = {
             Polyline(
               polylineId: const PolylineId('route'),
@@ -271,7 +315,6 @@ class _HomePageState extends State<HomePage> {
 
         // Fit camera to show both start and end points
         _fitCameraToRoute(route.points);
-
       } else {
         if (mounted) {
           context.showError('Unable to calculate route. Please try again.');
@@ -348,18 +391,113 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _passengerCount--;
       });
+      _recalculateFare();
     }
   }
 
   /// Increase passenger count
   void _increasePassengers() {
-    if (_passengerCount < 4) { // Max 4 passengers for tricycle
+    if (_passengerCount < 4) {
+      // Max 4 passengers for tricycle
       setState(() {
         _passengerCount++;
       });
+      _recalculateFare();
     }
   }
 
+  /// Recalculate fare when passenger count changes
+  Future<void> _recalculateFare() async {
+    if (_currentRoute != null && _currentPosition != null) {
+      final fareCalculation = await _bookingService.calculateEnhancedFare(
+        pickupLatitude: _currentPosition!.latitude,
+        pickupLongitude: _currentPosition!.longitude,
+        route: _currentRoute!,
+        passengerCount: _passengerCount,
+        vehicleType: 'tricycle',
+      );
+      if (mounted) {
+        setState(() {
+          _currentFareCalculation = fareCalculation;
+        });
+      }
+    }
+  }
+
+  /// Confirm booking
+  Future<void> _confirmBooking() async {
+    if (_currentPosition == null ||
+        _selectedDestination == null ||
+        _currentRoute == null) {
+      context.showError('Unable to create booking. Please try again.');
+      return;
+    }
+
+    // Check if user already has an active booking
+    if (_bookingService.hasActiveBooking) {
+      context.showError('You already have an active booking.');
+      return;
+    }
+
+    try {
+      // Create booking locations
+      final pickupLocation = BookingLocation(
+        latitude: _currentPosition!.latitude,
+        longitude: _currentPosition!.longitude,
+        address: _currentAddress,
+      );
+
+      final destination = BookingLocation(
+        latitude: _selectedDestination!.latitude,
+        longitude: _selectedDestination!.longitude,
+        address: _selectedDestination!.name,
+      );
+
+      // Create booking
+      final result = await _bookingService.createBooking(
+        pickupLocation: pickupLocation,
+        destination: destination,
+        route: _currentRoute!,
+        passengerCount: _passengerCount,
+        paymentMethod: 'cash',
+      );
+
+      if (result.success) {
+        if (mounted) {
+          context.showSuccess(
+            'Booking created successfully! Looking for drivers...',
+          );
+          setState(() {
+            _showBookingInformation = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          context.showError(result.message);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showError('Failed to create booking. Please try again.');
+      }
+    }
+  }
+
+  /// Cancel active booking
+  Future<void> _cancelBooking() async {
+    if (_activeBooking == null) return;
+
+    final result = await _bookingService.cancelBooking();
+    if (result.success) {
+      if (mounted) {
+        context.showSuccess('Booking cancelled successfully');
+      }
+    } else {
+      if (mounted) {
+        context.showError(result.message);
+      }
+    }
+  }
 
   /// Build map markers
   Set<Marker> _buildMarkers() {
@@ -448,18 +586,20 @@ class _HomePageState extends State<HomePage> {
                 isCalculatingRoute: _isCalculatingRoute,
                 showBookingInformation: _showBookingInformation,
                 passengerCount: _passengerCount,
+                fareCalculation: _currentFareCalculation,
+                activeBooking: _activeBooking,
                 onDestinationSearch: _openDestinationSearch,
                 onNext: _openBookingInformation,
                 onClear: _clearDestination,
-                onCloseBooking: () => setState(() => _showBookingInformation = false),
+                onCloseBooking: () =>
+                    setState(() => _showBookingInformation = false),
                 onDecreasePassengers: _decreasePassengers,
                 onIncreasePassengers: _increasePassengers,
                 onCashPayment: () {
-                  // Handle cash payment
+                  // Handle cash payment - could show payment options
                 },
-                onConfirm: () {
-                  // Handle confirm booking
-                },
+                onConfirm: _confirmBooking,
+                onCancelBooking: _cancelBooking,
               ),
             ),
           ),
@@ -467,5 +607,4 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
-
 }

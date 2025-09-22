@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../main.dart' show AppColors;
 import '../Services/places_service.dart';
 import '../Services/route_service.dart';
+import '../models/fare_config_model.dart';
+import '../models/booking_model.dart';
 import 'location_field_widget.dart';
 import 'booking_information_widget.dart';
 
@@ -14,6 +16,8 @@ class SearchPanelWidget extends StatelessWidget {
   final bool isCalculatingRoute;
   final bool showBookingInformation;
   final int passengerCount;
+  final EnhancedFareCalculation? fareCalculation;
+  final Booking? activeBooking;
   final VoidCallback onDestinationSearch;
   final VoidCallback onNext;
   final VoidCallback onClear;
@@ -22,6 +26,7 @@ class SearchPanelWidget extends StatelessWidget {
   final VoidCallback onIncreasePassengers;
   final VoidCallback onCashPayment;
   final VoidCallback onConfirm;
+  final VoidCallback? onCancelBooking;
 
   const SearchPanelWidget({
     super.key,
@@ -33,6 +38,8 @@ class SearchPanelWidget extends StatelessWidget {
     required this.isCalculatingRoute,
     required this.showBookingInformation,
     required this.passengerCount,
+    this.fareCalculation,
+    this.activeBooking,
     required this.onDestinationSearch,
     required this.onNext,
     required this.onClear,
@@ -41,6 +48,7 @@ class SearchPanelWidget extends StatelessWidget {
     required this.onIncreasePassengers,
     required this.onCashPayment,
     required this.onConfirm,
+    this.onCancelBooking,
   });
 
   @override
@@ -136,13 +144,92 @@ class SearchPanelWidget extends StatelessWidget {
             ),
             const SizedBox(height: 12),
           ],
-          if (showBookingInformation && selectedDestination != null && currentRoute != null) ...[
+          if (activeBooking != null && activeBooking!.isActive) ...[
+            // Active Booking Status
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.local_taxi,
+                        color: Colors.blue.shade600,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Active Booking',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    activeBooking!.statusText,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.blue.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${activeBooking!.pickupLocation.address} → ${activeBooking!.destination.address}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.blue.shade500,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Fare: ${activeBooking!.fare.formattedTotal}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                      if (onCancelBooking != null)
+                        TextButton(
+                          onPressed: onCancelBooking,
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red.shade600,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          ),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ] else if (showBookingInformation && selectedDestination != null && currentRoute != null) ...[
             // Booking Information UI
             BookingInformationWidget(
               currentAddress: currentAddress,
               destination: selectedDestination!,
               route: currentRoute!,
               passengerCount: passengerCount,
+              fareCalculation: fareCalculation,
               onClose: onCloseBooking,
               onDecreasePassengers: onDecreasePassengers,
               onIncreasePassengers: onIncreasePassengers,
