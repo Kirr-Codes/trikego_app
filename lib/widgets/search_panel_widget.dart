@@ -24,7 +24,7 @@ class SearchPanelWidget extends StatelessWidget {
   final VoidCallback onCloseBooking;
   final VoidCallback onDecreasePassengers;
   final VoidCallback onIncreasePassengers;
-  final VoidCallback onCashPayment;
+  final Future<void> Function() onCashPayment;
   final VoidCallback onConfirm;
   final VoidCallback? onCancelBooking;
 
