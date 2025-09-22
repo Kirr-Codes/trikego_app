@@ -9,12 +9,10 @@ class FareConfigModel {
   final double minimumFare;
   final double maximumFare;
   final Map<String, double> timeMultipliers;
-  final Map<String, double> zoneMultipliers;
   final Map<String, double> vehicleTypeMultipliers;
   final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
-  final String? description;
 
   const FareConfigModel({
     required this.id,
@@ -24,18 +22,16 @@ class FareConfigModel {
     required this.minimumFare,
     required this.maximumFare,
     required this.timeMultipliers,
-    required this.zoneMultipliers,
     required this.vehicleTypeMultipliers,
     required this.isActive,
     required this.createdAt,
     required this.updatedAt,
-    this.description,
   });
 
   /// Create from Firestore document
   factory FareConfigModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
-    
+
     return FareConfigModel(
       id: doc.id,
       baseFare: data['baseFare']?.toDouble() ?? 25.0,
@@ -44,12 +40,16 @@ class FareConfigModel {
       minimumFare: data['minimumFare']?.toDouble() ?? 25.0,
       maximumFare: data['maximumFare']?.toDouble() ?? 500.0,
       timeMultipliers: Map<String, double>.from(data['timeMultipliers'] ?? {}),
-      zoneMultipliers: Map<String, double>.from(data['zoneMultipliers'] ?? {}),
-      vehicleTypeMultipliers: Map<String, double>.from(data['vehicleTypeMultipliers'] ?? {}),
+      vehicleTypeMultipliers: Map<String, double>.from(
+        data['vehicleTypeMultipliers'] ?? {},
+      ),
       isActive: data['isActive'] ?? true,
-      createdAt: data['createdAt'] != null ? (data['createdAt'] as Timestamp).toDate() : DateTime.now(),
-      updatedAt: data['updatedAt'] != null ? (data['updatedAt'] as Timestamp).toDate() : DateTime.now(),
-      description: data['description'],
+      createdAt: data['createdAt'] != null
+          ? (data['createdAt'] as Timestamp).toDate()
+          : DateTime.now(),
+      updatedAt: data['updatedAt'] != null
+          ? (data['updatedAt'] as Timestamp).toDate()
+          : DateTime.now(),
     );
   }
 
@@ -62,12 +62,10 @@ class FareConfigModel {
       'minimumFare': minimumFare,
       'maximumFare': maximumFare,
       'timeMultipliers': timeMultipliers,
-      'zoneMultipliers': zoneMultipliers,
       'vehicleTypeMultipliers': vehicleTypeMultipliers,
       'isActive': isActive,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
-      'description': description,
     };
   }
 
@@ -77,32 +75,20 @@ class FareConfigModel {
     return FareConfigModel(
       id: 'default',
       baseFare: 25.0,
-      perKilometerRate: 12.0,
-      perPassengerRate: 5.0,
+      perKilometerRate: 15.0, // Updated to match Firestore
+      perPassengerRate: 10.0,
       minimumFare: 25.0,
       maximumFare: 500.0,
       timeMultipliers: {
-        'rush_morning': 1.2,    // 7-9 AM
-        'rush_evening': 1.3,    // 5-7 PM
-        'night': 1.1,           // 10 PM - 6 AM
-        'weekend': 1.1,         // Weekend multiplier
+        'rush_morning': 1.2, // 7-9 AM
+        'rush_evening': 1.2, // 5-7 PM - Updated to match Firestore
+        'night': 1.3, // 10 PM - 6 AM - Updated to match Firestore
+        'weekend': 1.1, // Weekend multiplier
       },
-      zoneMultipliers: {
-        'downtown': 1.1,
-        'airport': 1.2,
-        'hospital': 1.0,
-        'school': 1.0,
-        'market': 1.0,
-      },
-      vehicleTypeMultipliers: {
-        'tricycle': 1.0,
-        'motorcycle': 0.8,
-        'car': 1.5,
-      },
+      vehicleTypeMultipliers: {'tricycle': 1.0},
       isActive: true,
       createdAt: now,
       updatedAt: now,
-      description: 'Default fare configuration for TrikeGO',
     );
   }
 }
@@ -132,7 +118,7 @@ class TerminalLocation {
   /// Create from Firestore document
   factory TerminalLocation.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
-    
+
     return TerminalLocation(
       id: doc.id,
       name: data['name'] ?? '',
@@ -140,8 +126,12 @@ class TerminalLocation {
       longitude: data['longitude']?.toDouble() ?? 0.0,
       address: data['address'] ?? '',
       isActive: data['isActive'] ?? true,
-      createdAt: data['createdAt'] != null ? (data['createdAt'] as Timestamp).toDate() : DateTime.now(),
-      updatedAt: data['updatedAt'] != null ? (data['updatedAt'] as Timestamp).toDate() : DateTime.now(),
+      createdAt: data['createdAt'] != null
+          ? (data['createdAt'] as Timestamp).toDate()
+          : DateTime.now(),
+      updatedAt: data['updatedAt'] != null
+          ? (data['updatedAt'] as Timestamp).toDate()
+          : DateTime.now(),
     );
   }
 
@@ -181,11 +171,9 @@ class EnhancedFareCalculation {
   final double pickupToDestinationFare;
   final double passengerFare;
   final double timeMultiplier;
-  final double zoneMultiplier;
   final double vehicleTypeMultiplier;
   final double subtotal;
   final double totalFare;
-  final String currency;
   final String breakdown;
   final double driverToPickupDistanceKm;
   final double pickupToDestinationDistanceKm;
@@ -196,16 +184,13 @@ class EnhancedFareCalculation {
     required this.pickupToDestinationFare,
     required this.passengerFare,
     required this.timeMultiplier,
-    required this.zoneMultiplier,
     required this.vehicleTypeMultiplier,
     required this.subtotal,
     required this.totalFare,
-    this.currency = 'PHP',
     required this.breakdown,
     required this.driverToPickupDistanceKm,
     required this.pickupToDestinationDistanceKm,
   });
 
   String get formattedTotal => '₱${totalFare.toStringAsFixed(2)}';
-  String get formattedSubtotal => '₱${subtotal.toStringAsFixed(2)}';
 }

@@ -169,7 +169,6 @@ class BackendFareCalculationService {
         pickupToDestinationFare: pickupToDestinationFare,
         passengerFare: passengerFare,
         timeMultiplier: timeMultiplier,
-        zoneMultiplier: 1.0, // No zone multiplier
         vehicleTypeMultiplier: vehicleTypeMultiplier,
         subtotal: subtotal,
         totalFare: finalFare,
@@ -248,7 +247,6 @@ class BackendFareCalculationService {
         pickupToDestinationFare: pickupToDestinationFare,
         passengerFare: passengerFare,
         timeMultiplier: timeMultiplier,
-        zoneMultiplier: 1.0, // No zone multiplier
         vehicleTypeMultiplier: vehicleTypeMultiplier,
         subtotal: subtotal,
         totalFare: finalFare,
@@ -341,8 +339,8 @@ class BackendFareCalculationService {
     
     // Use default values for fallback
     const baseFare = 25.0;
-    const perKmRate = 12.0;
-    const perPassengerRate = 5.0;
+    const perKmRate = 15.0; // Updated to match Firestore
+    const perPassengerRate = 10.0;
     
     // Estimate driver distance (assume average 2km)
     const estimatedDriverDistanceKm = 2.0;
@@ -363,7 +361,6 @@ class BackendFareCalculationService {
       pickupToDestinationFare: pickupToDestinationFare,
       passengerFare: passengerFare,
       timeMultiplier: 1.0,
-      zoneMultiplier: 1.0,
       vehicleTypeMultiplier: 1.0,
       subtotal: subtotal,
       totalFare: totalFare,
@@ -382,8 +379,8 @@ class BackendFareCalculationService {
     String? zone,
   }) {
     const baseFare = 25.0;
-    const perKmRate = 12.0;
-    const perPassengerRate = 5.0;
+    const perKmRate = 15.0; // Updated to match Firestore
+    const perPassengerRate = 10.0;
     const estimatedDriverDistanceKm = 2.0;
     
     final driverToPickupFare = estimatedDriverDistanceKm * perKmRate;
@@ -400,7 +397,6 @@ class BackendFareCalculationService {
       pickupToDestinationFare: pickupToDestinationFare,
       passengerFare: passengerFare,
       timeMultiplier: 1.0,
-      zoneMultiplier: 1.0,
       vehicleTypeMultiplier: 1.0,
       subtotal: subtotal,
       totalFare: totalFare,

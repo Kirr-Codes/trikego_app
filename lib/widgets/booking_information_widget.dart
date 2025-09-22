@@ -12,7 +12,7 @@ class BookingInformationWidget extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback onDecreasePassengers;
   final VoidCallback onIncreasePassengers;
-  final VoidCallback onCashPayment;
+  final Future<void> Function() onCashPayment;
   final VoidCallback onConfirm;
   final EnhancedFareCalculation? fareCalculation;
 
@@ -304,37 +304,6 @@ class BookingInformationWidget extends StatelessWidget {
                   ),
                 ],
               ),
-              if (fareCalculation != null && 
-                  (fareCalculation!.timeMultiplier > 1.0 || fareCalculation!.vehicleTypeMultiplier > 1.0)) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.orange.shade200),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.local_fire_department,
-                        color: Colors.orange.shade600,
-                        size: 14,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Surge pricing active',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.orange.shade700,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -345,7 +314,7 @@ class BookingInformationWidget extends StatelessWidget {
           children: [
             Expanded(
               child: ElevatedButton(
-                onPressed: onCashPayment,
+                onPressed: () => onCashPayment(),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.grey.shade200,
                   foregroundColor: Colors.black,
@@ -365,7 +334,7 @@ class BookingInformationWidget extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     const Text(
-                      'Cash',
+                      'Payment',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
