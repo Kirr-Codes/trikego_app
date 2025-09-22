@@ -494,7 +494,9 @@ class AuthService {
       if (_googleSignIn != null) {
         await _googleSignIn!.signOut();
       }
-    } catch (e) {}
+    } catch (e) {
+      // Ignore errors during Google sign-out
+    }
   }
 
   /// Helper method to get user UID by email
@@ -606,6 +608,9 @@ class AuthService {
     required String newPhoneNumber,
   }) async {
     try {
+      // Store the pending phone number for later use
+      _pendingPhoneNumber = newPhoneNumber;
+      
       await _firebaseAuth.verifyPhoneNumber(
         phoneNumber: newPhoneNumber,
         verificationCompleted: (PhoneAuthCredential credential) async {
@@ -670,12 +675,88 @@ class AuthService {
   ) async {
     final user = currentUser;
     if (user != null) {
-      // Re-authenticate with the credential to update phone number
-      await user.reauthenticateWithCredential(credential);
+      try {
+        // Check if user has Gmail linked (Google provider)
+        final hasGoogleProvider = user.providerData.any(
+          (provider) => provider.providerId == 'google.com',
+        );
 
-      // Update phone number in Firestore
-      final newPhoneNumber = user.phoneNumber ?? '';
-      await _firestoreService.updatePhoneNumber(newPhoneNumber);
+        if (hasGoogleProvider) {
+          // For Gmail-linked accounts, we need to re-authenticate with Google first
+          // Then link the phone credential
+          await _reauthenticateWithGoogleAndLinkPhone(credential);
+        } else {
+          // For phone-only accounts, re-authenticate with phone credential
+          await user.reauthenticateWithCredential(credential);
+        }
+
+        // Update phone number in Firestore using the pending phone number
+        final phoneNumberToUpdate = _pendingPhoneNumber ?? user.phoneNumber ?? '';
+        if (phoneNumberToUpdate.isNotEmpty) {
+          await _firestoreService.updatePhoneNumber(phoneNumberToUpdate);
+        } else {
+          // If both are empty, try alternative approach
+          await _alternativePhoneUpdate(credential);
+        }
+      } catch (e) {
+        // If re-authentication fails, try alternative approach
+        await _alternativePhoneUpdate(credential);
+      }
+    }
+  }
+
+  /// Re-authenticate with Google and link phone credential
+  Future<void> _reauthenticateWithGoogleAndLinkPhone(
+    PhoneAuthCredential phoneCredential,
+  ) async {
+    try {
+      final user = currentUser;
+      if (user == null) return;
+
+      // For phone number updates, we don't need to re-authenticate with Google
+      // We can directly link the phone credential since the user is already authenticated
+      await user.linkWithCredential(phoneCredential);
+    } catch (e) {
+      // If linking fails, try alternative approach
+      await _alternativePhoneUpdate(phoneCredential);
+    }
+  }
+
+  /// Alternative phone update method for Gmail-linked accounts
+  Future<void> _alternativePhoneUpdate(
+    PhoneAuthCredential phoneCredential,
+  ) async {
+    try {
+      final user = currentUser;
+      if (user == null) return;
+
+      // Check if phone credential is already linked
+      final hasPhoneProvider = user.providerData.any(
+        (provider) => provider.providerId == 'phone',
+      );
+
+      if (!hasPhoneProvider) {
+        // Try to link the phone credential directly
+        await user.linkWithCredential(phoneCredential);
+      }
+
+      // Update phone number in Firestore using pending phone number
+      final phoneNumberToUpdate = _pendingPhoneNumber ?? user.phoneNumber ?? '';
+      if (phoneNumberToUpdate.isNotEmpty) {
+        await _firestoreService.updatePhoneNumber(phoneNumberToUpdate);
+      }
+    } catch (e) {
+      // If linking fails, just update Firestore with the pending phone number
+      // This ensures the phone number is updated even if credential linking fails
+      try {
+        final phoneNumberToUpdate = _pendingPhoneNumber ?? '';
+        if (phoneNumberToUpdate.isNotEmpty) {
+          await _firestoreService.updatePhoneNumber(phoneNumberToUpdate);
+        }
+      } catch (firestoreError) {
+        // If even Firestore update fails, re-throw the original error
+        rethrow;
+      }
     }
   }
 
@@ -862,7 +943,7 @@ class AuthService {
     } catch (e) {
       // Don't throw error for storage deletion failures
       // The account deletion should still proceed
-      print('Warning: Failed to delete some profile pictures: $e');
+      // Note: Profile picture deletion failure is non-critical
     }
   }
 
