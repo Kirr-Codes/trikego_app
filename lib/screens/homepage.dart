@@ -495,6 +495,12 @@ class _HomePageState extends State<HomePage> {
     if (result.success) {
       if (mounted) {
         context.showSuccess('Booking cancelled successfully');
+        // Reset UI state to show search panel again
+        setState(() {
+          _showBookingInformation = false;
+          _selectedDestination = null;
+          _currentRoute = null;
+        });
       }
     } else {
       if (mounted) {

@@ -223,6 +223,7 @@ class BookingService {
       final user = _auth.currentUser;
       if (user == null) return [];
 
+      // Try ordered query first, fallback to simple query if index is missing
       Query query = _firestore
           .collection(_bookingsCollection)
           .where('passengerId', isEqualTo: user.uid)
@@ -233,13 +234,32 @@ class BookingService {
         query = query.startAfter([Timestamp.fromDate(startAfter)]);
       }
 
-      final snapshot = await query.get();
-      final bookings = snapshot.docs
-          .map((doc) => Booking.fromFirestore(doc))
-          .toList();
+      try {
+        final snapshot = await query.get();
+        final bookings = snapshot.docs
+            .map((doc) => Booking.fromFirestore(doc))
+            .toList();
 
-      _bookingHistoryController.add(bookings);
-      return bookings;
+        _bookingHistoryController.add(bookings);
+        return bookings;
+      } catch (e) {
+        // Fallback to simple query without orderBy if index is missing
+        final simpleQuery = _firestore
+            .collection(_bookingsCollection)
+            .where('passengerId', isEqualTo: user.uid)
+            .limit(limit);
+        
+        final snapshot = await simpleQuery.get();
+        final bookings = snapshot.docs
+            .map((doc) => Booking.fromFirestore(doc))
+            .toList();
+
+        // Sort manually by createdAt descending
+        bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        _bookingHistoryController.add(bookings);
+        return bookings;
+      }
     } catch (e) {
       return [];
     }

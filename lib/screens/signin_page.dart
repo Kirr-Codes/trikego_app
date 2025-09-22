@@ -24,7 +24,7 @@ class _SignInPageState extends State<SignInPage> {
   static const int _initialSeconds = 60;
   int _secondsRemaining = 0;
   Timer? _timer;
-  
+
   bool _isSendingOtp = false;
   bool _isVerifying = false;
   bool _isGmailLoading = false;
@@ -61,16 +61,19 @@ class _SignInPageState extends State<SignInPage> {
     setState(() => _isSendingOtp = true);
 
     try {
-      
-      final phoneExists = await _authService.checkPhoneNumberExists(_completePhoneNumber);
+      final phoneExists = await _authService.checkPhoneNumberExists(
+        _completePhoneNumber,
+      );
       if (!mounted) return;
 
       if (!phoneExists) {
-        context.showError('This phone number is not registered. Please sign up first.');
+        context.showError(
+          'This phone number is not registered. Please sign up first.',
+        );
         setState(() => _isSendingOtp = false);
         return;
       }
-      
+
       final result = await _authService.startPhoneAuth(
         phoneNumber: _completePhoneNumber,
       );
@@ -108,7 +111,6 @@ class _SignInPageState extends State<SignInPage> {
       if (!mounted) return;
 
       if (result.isSuccess && result.hasUser) {
-        
         Navigator.pushNamedAndRemoveUntil(
           context,
           '/homepage',
@@ -142,6 +144,12 @@ class _SignInPageState extends State<SignInPage> {
           (route) => false,
         );
       } else {
+        // Check if this was a cancellation - don't show error for cancellation
+        if (result.message == 'Gmail sign-in was cancelled by user') {
+          // User cancelled, don't show any message and don't navigate
+          return;
+        }
+        
         // Handle specific error cases
         if (result.errorCode == 'ACCOUNT_NOT_REGISTERED') {
           context.showError(
@@ -190,7 +198,8 @@ class _SignInPageState extends State<SignInPage> {
   }
 
   bool get _isPhoneValid =>
-      _completePhoneNumber.startsWith('+63') && _completePhoneNumber.length >= 12;
+      _completePhoneNumber.startsWith('+63') &&
+      _completePhoneNumber.length >= 12;
   bool get _isCodeValid => _smsCodeController.text.trim().length == 6;
 
   @override
@@ -263,7 +272,10 @@ class _SignInPageState extends State<SignInPage> {
                     Padding(
                       padding: const EdgeInsets.only(right: 8.0),
                       child: TextButton(
-                        onPressed: (_isPhoneValid && _secondsRemaining == 0 && !_isSendingOtp)
+                        onPressed:
+                            (_isPhoneValid &&
+                                _secondsRemaining == 0 &&
+                                !_isSendingOtp)
                             ? _sendOtp
                             : null,
                         style: TextButton.styleFrom(
@@ -287,7 +299,9 @@ class _SignInPageState extends State<SignInPage> {
                                 _secondsRemaining > 0
                                     ? 'Resend (00:${_secondsRemaining.toString().padLeft(2, '0')})'
                                     : 'Get SMS Code',
-                                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                                style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                       ),
                     ),
@@ -303,7 +317,9 @@ class _SignInPageState extends State<SignInPage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: (_isPhoneValid && _isCodeValid && !_isVerifying) ? _verifyCode : null,
+                    onPressed: (_isPhoneValid && _isCodeValid && !_isVerifying)
+                        ? _verifyCode
+                        : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
@@ -357,21 +373,20 @@ class _SignInPageState extends State<SignInPage> {
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     onPressed: _isGmailLoading ? null : _signInWithGmail,
-                    icon: _isGmailLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppColors.primary,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.mail_outline,
-                            color: AppColors.primary,
+                    icon: Container(
+                      width: 25,
+                      height: 25,
+                      decoration: const BoxDecoration(
+                        image: DecorationImage(
+                          image: NetworkImage(
+                            'https://developers.google.com/identity/images/g-logo.png',
                           ),
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
                     label: Text(
-                      'Sign in with Gmail',
+                      'Sign in with Google',
                       style: GoogleFonts.inter(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
@@ -385,12 +400,12 @@ class _SignInPageState extends State<SignInPage> {
                         horizontal: 16,
                       ),
                       side: BorderSide(
-                        color: Colors.black.withValues(alpha: 0.12),
+                        color: Colors.black.withValues(alpha: 0.6),
                       ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      backgroundColor: const Color(0xFFF2F2F4),
+                      backgroundColor: Colors.white,
                       alignment: Alignment.center,
                     ),
                   ),

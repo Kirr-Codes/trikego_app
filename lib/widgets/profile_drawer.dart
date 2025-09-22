@@ -21,160 +21,160 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
     return Drawer(
       backgroundColor: AppColors.primary,
       child: SafeArea(
-          child: Column(
-            children: [
-              // Profile Section
-              Container(
-                padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            // Profile Section
+            Container(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Profile Avatar
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        width: 2,
+                      ),
+                    ),
+                    child: CircleAvatar(
+                      radius: 38,
+                      backgroundColor: Colors.white.withValues(alpha: 0.2),
+                      backgroundImage: userData?.user.profilePictureUrl != null
+                          ? NetworkImage(userData!.user.profilePictureUrl!)
+                          : null,
+                      child: userData?.user.profilePictureUrl == null
+                          ? Icon(
+                              Icons.person,
+                              size: 40,
+                              color: Colors.white.withValues(alpha: 0.9),
+                            )
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Name
+                  Text(
+                    userData?.displayName ?? user?.displayName ?? 'User',
+                    style: GoogleFonts.inter(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.visible,
+                  ),
+                  const SizedBox(height: 4),
+
+                  // Phone Number
+                  Text(
+                    userData?.user.phoneNum ??
+                        user?.phoneNumber ??
+                        'No phone number',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                      color: Colors.white.withValues(alpha: 0.8),
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.visible,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Divider
+                  Container(
+                    height: 1,
+                    width: double.infinity,
+                    color: Colors.white.withValues(alpha: 0.2),
+                  ),
+                ],
+              ),
+            ),
+
+            // Menu Items
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Profile Avatar
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.3),
-                          width: 2,
-                        ),
-                      ),
-                      child: CircleAvatar(
-                        radius: 38,
-                        backgroundColor: Colors.white.withValues(alpha: 0.2),
-                        backgroundImage: userData?.user.profilePictureUrl != null
-                            ? NetworkImage(userData!.user.profilePictureUrl!)
-                            : null,
-                        child: userData?.user.profilePictureUrl == null
-                            ? Icon(
-                                Icons.person,
-                                size: 40,
-                                color: Colors.white.withValues(alpha: 0.9),
-                              )
-                            : null,
-                      ),
+                    _buildMenuItem(
+                      icon: Icons.person_outline,
+                      title: 'Edit profile',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.pushNamed(context, '/edit_profile');
+                      },
                     ),
-                    const SizedBox(height: 16),
-
-                    // Name
-                    Text(
-                      userData?.displayName ?? user?.displayName ?? 'User',
-                      style: GoogleFonts.inter(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.visible,
+                    _buildMenuItem(
+                      icon: Icons.history,
+                      title: 'History',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.pushNamed(context, '/history');
+                      },
                     ),
-                    const SizedBox(height: 4),
-
-                    // Phone Number
-                    Text(
-                      userData?.user.phoneNum ??
-                          user?.phoneNumber ??
-                          'No phone number',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                        color: Colors.white.withValues(alpha: 0.8),
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.visible,
+                    _buildMenuItem(
+                      icon: Icons.settings_outlined,
+                      title: 'Settings',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.pushNamed(context, '/settings');
+                      },
                     ),
-                    const SizedBox(height: 20),
-
-                    // Divider
-                    Container(
-                      height: 1,
-                      width: double.infinity,
-                      color: Colors.white.withValues(alpha: 0.2),
+                    _buildMenuItem(
+                      icon: Icons.info_outline,
+                      title: 'About Us',
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showAboutDialog(context);
+                      },
                     ),
                   ],
                 ),
               ),
+            ),
 
-              // Menu Items
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
+            // Logout Button
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => _handleLogout(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF2E5BBA),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 3,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _buildMenuItem(
-                        icon: Icons.person_outline,
-                        title: 'Edit profile',
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.pushNamed(context, '/edit_profile');
-                        },
-                      ),
-                      _buildMenuItem(
-                        icon: Icons.history,
-                        title: 'History',
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.pushNamed(context, '/history');
-                        },
-                      ),
-                      _buildMenuItem(
-                        icon: Icons.settings_outlined,
-                        title: 'Settings',
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.pushNamed(context, '/settings');
-                        },
-                      ),
-                      _buildMenuItem(
-                        icon: Icons.info_outline,
-                        title: 'About Us',
-                        onTap: () {
-                          Navigator.pop(context);
-                          _showAboutDialog(context);
-                        },
+                      const Icon(Icons.logout, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Logout',
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-
-              // Logout Button
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => _handleLogout(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF2E5BBA),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 3,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.logout, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Logout',
-                          style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -235,19 +235,7 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
               ),
             ),
             ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context); // Close dialog
-                Navigator.pop(context); // Close drawer
-
-                // Navigate to landing page and clear navigation stack
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  '/',
-                  (route) => false,
-                );
-
-                context.showSuccess('You have been logged out successfully');
-              },
+              onPressed: () => _confirmLogout(context),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red.shade600,
                 foregroundColor: Colors.white,
@@ -264,6 +252,29 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
         );
       },
     );
+  }
+
+  /// Confirms and executes logout
+  void _confirmLogout(BuildContext context) async {
+    Navigator.pop(context); // Close dialog
+    Navigator.pop(context); // Close drawer
+
+    try {
+      final result = await _authService.signOut();
+
+      if (context.mounted) {
+        if (result.isSuccess) {
+          // Navigate to landing page and clear navigation stack
+          Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+        } else {
+          context.showError(result.message);
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        context.showError('Failed to logout. Please try again.');
+      }
+    }
   }
 
   /// Shows about dialog with app information

@@ -237,6 +237,7 @@ class AuthService {
     try {
       // Step 1: Sign in with Google (lazy initialization)
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+
       if (googleUser == null) {
         return AuthResult.error('Gmail sign-in was cancelled by user');
       }
@@ -610,7 +611,7 @@ class AuthService {
     try {
       // Store the pending phone number for later use
       _pendingPhoneNumber = newPhoneNumber;
-      
+
       await _firebaseAuth.verifyPhoneNumber(
         phoneNumber: newPhoneNumber,
         verificationCompleted: (PhoneAuthCredential credential) async {
@@ -691,7 +692,8 @@ class AuthService {
         }
 
         // Update phone number in Firestore using the pending phone number
-        final phoneNumberToUpdate = _pendingPhoneNumber ?? user.phoneNumber ?? '';
+        final phoneNumberToUpdate =
+            _pendingPhoneNumber ?? user.phoneNumber ?? '';
         if (phoneNumberToUpdate.isNotEmpty) {
           await _firestoreService.updatePhoneNumber(phoneNumberToUpdate);
         } else {
@@ -1026,6 +1028,13 @@ abstract class AuthState {
   factory AuthState.authenticated(User user) => _AuthenticatedState(user);
   factory AuthState.unauthenticated() => const _UnauthenticatedState();
   factory AuthState.error(String message) => _ErrorState(message);
+
+  /// Check if the user is authenticated
+  bool get isAuthenticated => this is _AuthenticatedState;
+
+  /// Get the authenticated user if available
+  User? get authenticatedUser =>
+      isAuthenticated ? (this as _AuthenticatedState).user : null;
 }
 
 class _InitialState extends AuthState {
