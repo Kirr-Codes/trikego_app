@@ -17,6 +17,7 @@ import '../utils/dialog_utils.dart';
 import '../main.dart' show AppColors;
 import 'destination_search_screen.dart';
 import 'service_unavailable_page.dart';
+import 'payment_method_screen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -439,6 +440,9 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    // Default to cash payment if no payment method selected
+    String selectedPaymentMethod = 'cash';
+
     try {
       // Create booking locations
       final pickupLocation = BookingLocation(
@@ -459,7 +463,7 @@ class _HomePageState extends State<HomePage> {
         destination: destination,
         route: _currentRoute!,
         passengerCount: _passengerCount,
-        paymentMethod: 'cash',
+        paymentMethod: selectedPaymentMethod,
       );
 
       if (result.success) {
@@ -595,8 +599,20 @@ class _HomePageState extends State<HomePage> {
                     setState(() => _showBookingInformation = false),
                 onDecreasePassengers: _decreasePassengers,
                 onIncreasePassengers: _increasePassengers,
-                onCashPayment: () {
-                  // Handle cash payment - could show payment options
+                onCashPayment: () async {
+                  // Show payment method selection
+                  final selectedPaymentMethod = await Navigator.push<String>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const PaymentMethodScreen(),
+                    ),
+                  );
+                  
+                  if (selectedPaymentMethod != null && mounted) {
+                    // Show success message with selected payment method
+                    final paymentMethodName = selectedPaymentMethod == 'cash' ? 'Cash' : 'GCash';
+                    context.showSuccess('Payment method set to $paymentMethodName');
+                  }
                 },
                 onConfirm: _confirmBooking,
                 onCancelBooking: _cancelBooking,
