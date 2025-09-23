@@ -6,6 +6,9 @@ import 'screens/otp_page.dart';
 import 'screens/signin_page.dart';
 import 'screens/edit_profile_page.dart';
 import 'screens/settings_screen.dart';
+import 'screens/privacy_policy_screen.dart';
+import 'screens/terms_of_service_screen.dart';
+import 'screens/contact_us_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/homepage.dart';
@@ -106,6 +109,9 @@ class MyApp extends StatelessWidget {
         '/edit_profile': (context) => const EditProfilePage(),
         '/settings': (context) => const SettingsScreen(),
         '/payment_method': (context) => const PaymentMethodScreen(),
+        '/privacy_policy': (context) => const PrivacyPolicyScreen(),
+        '/terms_of_service': (context) => const TermsOfServiceScreen(),
+        '/contact_us': (context) => const ContactUsScreen(),
       },
     );
   }

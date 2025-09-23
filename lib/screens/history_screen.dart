@@ -32,7 +32,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
       final bookings = await _bookingService.getBookingHistory();
       final convertedTransactions = _convertBookingsToTransactions(bookings);
-      
+
       setState(() {
         transactions = convertedTransactions;
         isLoading = false;
@@ -120,9 +120,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Widget _buildContent() {
     if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (errorMessage != null) {
@@ -130,11 +128,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Colors.grey[400],
-            ),
+            Icon(Icons.error_outline, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
               'Error loading history',
@@ -147,10 +141,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             const SizedBox(height: 8),
             Text(
               errorMessage!,
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                color: Colors.grey[500],
-              ),
+              style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[500]),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -168,11 +159,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.history,
-              size: 64,
-              color: Colors.grey[400],
-            ),
+            Icon(Icons.history, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
               'No transactions yet',
@@ -298,7 +285,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
                   // Status
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: _getStatusColor(transaction.status),
                       borderRadius: BorderRadius.circular(12),
