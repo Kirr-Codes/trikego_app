@@ -2,15 +2,22 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import '../services/location_service.dart';
-import '../services/address_service.dart';
-import '../services/places_service.dart';
-import '../services/route_service.dart';
+import '../Services/location_service.dart';
+import '../Services/address_service.dart';
+import '../Services/places_service.dart';
+import '../Services/route_service.dart';
+import '../Services/booking_service.dart';
+import '../models/fare_config_model.dart';
+import '../models/booking_model.dart';
 import '../widgets/profile_drawer.dart';
+import '../widgets/circle_icon_button_widget.dart';
+import '../widgets/search_panel_widget.dart';
 import '../utils/snackbar_utils.dart';
 import '../utils/dialog_utils.dart';
 import '../main.dart' show AppColors;
 import 'destination_search_screen.dart';
+import 'service_unavailable_page.dart';
+import 'payment_method_screen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -22,6 +29,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final LocationService _locationService = LocationService();
   final AddressService _addressService = AddressService();
+  final BookingService _bookingService = BookingService();
   GoogleMapController? _mapController;
 
   LatLng? _currentPosition;
@@ -37,20 +45,163 @@ class _HomePageState extends State<HomePage> {
   Set<Marker> _destinationMarkers = {};
   bool _isCalculatingRoute = false;
 
-  static const LatLng _defaultLocation = LatLng(14.5995, 120.9842); // Manila
+  // Service availability state
+  bool _isServiceAvailable = true;
+  String _serviceUnavailableReason = '';
+
+  // Booking state
+  bool _showBookingInformation = false;
+  int _passengerCount = 1;
+  EnhancedFareCalculation? _currentFareCalculation;
+  Booking? _activeBooking;
+  StreamSubscription<Booking?>? _bookingSubscription;
+  
+  // Driver tracking state
+  Set<Polyline> _driverRoutePolylines = {};
+  Set<Marker> _driverMarkers = {};
+
+  static const LatLng _defaultLocation = LatLng(
+    14.8312,
+    120.7895,
+  ); // Paombong Bulacan Municipal Hall
+  static const double _serviceRadiusKm = 10.0; // 2km service radius
 
   @override
   void initState() {
     super.initState();
     _initializeLocation();
+    _initializeBookingService();
   }
 
   @override
   void dispose() {
     _locationSubscription?.cancel();
     _stateSubscription?.cancel();
+    _bookingSubscription?.cancel();
     _locationService.stopTracking();
     super.dispose();
+  }
+
+  /// Initialize booking service and set up listeners
+  void _initializeBookingService() {
+    // Listen to active booking updates
+    _bookingSubscription = _bookingService.activeBookingStream.listen((
+      booking,
+    ) {
+      if (mounted) {
+        setState(() {
+          _activeBooking = booking;
+          // If there's an active booking, hide booking information UI
+          if (booking != null && booking.isActive) {
+            _showBookingInformation = false;
+          }
+        });
+        
+        // Handle driver location and route display
+        _handleBookingUpdate(booking);
+      }
+    });
+  }
+
+  /// Handle booking updates and driver location display
+  Future<void> _handleBookingUpdate(Booking? booking) async {
+    if (booking == null || !booking.isActive) {
+      // Clear driver markers and routes when no active booking
+      setState(() {
+        _driverMarkers.clear();
+        _driverRoutePolylines.clear();
+      });
+      return;
+    }
+
+    // If booking is accepted and has driver location, display driver on map
+    if (booking.status == BookingStatus.accepted && booking.driverLocation != null) {
+      await _updateDriverLocationOnMap(booking);
+    }
+  }
+
+  /// Update driver location on map and show route to pickup
+  Future<void> _updateDriverLocationOnMap(Booking booking) async {
+    if (booking.driverLocation == null || _currentPosition == null) return;
+
+    try {
+      final driverLatLng = booking.driverLocation!.latLng;
+      final pickupLatLng = booking.pickupLocation.latLng;
+
+      // Create driver marker
+      final driverMarker = Marker(
+        markerId: const MarkerId('driver_location'),
+        position: driverLatLng,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: InfoWindow(
+          title: 'Your Driver',
+          snippet: booking.driver?.fullName ?? 'Driver approaching',
+        ),
+      );
+
+      // Get route from driver to pickup location
+      final driverToPickupRoute = await RouteService.getRoute(
+        startLatitude: driverLatLng.latitude,
+        startLongitude: driverLatLng.longitude,
+        endLatitude: pickupLatLng.latitude,
+        endLongitude: pickupLatLng.longitude,
+      );
+
+      setState(() {
+        // Update driver marker
+        _driverMarkers.clear();
+        _driverMarkers.add(driverMarker);
+
+        // Update driver route polyline
+        _driverRoutePolylines.clear();
+        if (driverToPickupRoute != null) {
+          _driverRoutePolylines.add(
+            Polyline(
+              polylineId: const PolylineId('driver_to_pickup'),
+              points: driverToPickupRoute.points,
+              color: Colors.blue,
+              width: 4,
+              patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+            ),
+          );
+        }
+      });
+
+      // Adjust camera to show both driver and pickup locations
+      _fitCameraToShowDriverAndPickup(driverLatLng, pickupLatLng);
+
+    } catch (e) {
+      // Handle error silently
+    }
+  }
+
+
+  /// Fit camera to show both driver and pickup locations
+  void _fitCameraToShowDriverAndPickup(LatLng driverLocation, LatLng pickupLocation) {
+    if (_mapController == null) return;
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        driverLocation.latitude < pickupLocation.latitude 
+            ? driverLocation.latitude 
+            : pickupLocation.latitude,
+        driverLocation.longitude < pickupLocation.longitude 
+            ? driverLocation.longitude 
+            : pickupLocation.longitude,
+      ),
+      northeast: LatLng(
+        driverLocation.latitude > pickupLocation.latitude 
+            ? driverLocation.latitude 
+            : pickupLocation.latitude,
+        driverLocation.longitude > pickupLocation.longitude 
+            ? driverLocation.longitude 
+            : pickupLocation.longitude,
+      ),
+    );
+
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(bounds, 100.0),
+    );
   }
 
   /// Initialize location service and set up listeners
@@ -62,6 +213,9 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         setState(() => _currentPosition = location);
         _updateMapCamera(location);
+
+        // Check service availability
+        _checkServiceAvailability(location);
 
         // Get address for this location
         _updateAddress(location);
@@ -81,7 +235,7 @@ class _HomePageState extends State<HomePage> {
     if (!success && mounted) {
       setState(() {
         _currentPosition = _defaultLocation;
-        _currentAddress = 'Manila, Philippines (Default)';
+        _currentAddress = 'Paombong, Bulacan (Default)';
       });
       _updateMapCamera(_defaultLocation);
     }
@@ -98,6 +252,28 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         setState(() => _currentAddress = 'Unable to get address');
       }
+    }
+  }
+
+  /// Check if user is within service area
+  void _checkServiceAvailability(LatLng userLocation) {
+    final distance = RouteService.calculateDistance(
+      _defaultLocation,
+      userLocation,
+    );
+    final distanceKm = distance / 1000;
+
+    if (distanceKm > _serviceRadiusKm) {
+      setState(() {
+        _isServiceAvailable = false;
+        _serviceUnavailableReason =
+            'You are ${distanceKm.toStringAsFixed(1)}km away from our service area';
+      });
+    } else {
+      setState(() {
+        _isServiceAvailable = true;
+        _serviceUnavailableReason = '';
+      });
     }
   }
 
@@ -144,6 +320,20 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    // Check if service is available
+    if (!_isServiceAvailable) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ServiceUnavailablePage(
+            userLocation: _currentAddress,
+            reason: _serviceUnavailableReason,
+          ),
+        ),
+      );
+      return;
+    }
+
     final result = await Navigator.push<PlaceSearchResult>(
       context,
       MaterialPageRoute(
@@ -166,20 +356,6 @@ class _HomePageState extends State<HomePage> {
   Future<void> _calculateRoute() async {
     if (_currentPosition == null || _selectedDestination == null) return;
 
-    // Check distance limit before calculating route
-    final distance = RouteService.calculateDistance(
-      _currentPosition!,
-      LatLng(_selectedDestination!.latitude, _selectedDestination!.longitude),
-    );
-
-    const double maxDistanceKm = 20.0; // 20km limit
-    const double maxDistanceMeters = maxDistanceKm * 1000;
-
-    if (distance > maxDistanceMeters) {
-      DialogUtils.showDistanceLimitDialog(context, distance, _clearDestination);
-      return;
-    }
-
     setState(() => _isCalculatingRoute = true);
 
     try {
@@ -193,8 +369,18 @@ class _HomePageState extends State<HomePage> {
       );
 
       if (route != null && mounted) {
+        // Calculate enhanced fare for current passenger count
+        final fareCalculation = await _bookingService.calculateEnhancedFare(
+          pickupLatitude: _currentPosition!.latitude,
+          pickupLongitude: _currentPosition!.longitude,
+          route: route,
+          passengerCount: _passengerCount,
+          vehicleType: 'tricycle',
+        );
+
         setState(() {
           _currentRoute = route;
+          _currentFareCalculation = fareCalculation;
           _polylines = {
             Polyline(
               polylineId: const PolylineId('route'),
@@ -224,7 +410,6 @@ class _HomePageState extends State<HomePage> {
 
         // Fit camera to show both start and end points
         _fitCameraToRoute(route.points);
-
       } else {
         if (mounted) {
           context.showError('Unable to calculate route. Please try again.');
@@ -274,9 +459,152 @@ class _HomePageState extends State<HomePage> {
       _currentRoute = null;
       _polylines = {};
       _destinationMarkers = {};
+      _showBookingInformation = false;
+      _passengerCount = 1;
     });
   }
 
+  /// Show booking information UI
+  Future<void> _openBookingInformation() async {
+    if (_selectedDestination == null || _currentPosition == null) return;
+
+    // Calculate route if not already calculated
+    if (_currentRoute == null) {
+      await _calculateRoute();
+    }
+
+    if (_currentRoute != null) {
+      setState(() {
+        _showBookingInformation = true;
+      });
+    }
+  }
+
+  /// Decrease passenger count
+  void _decreasePassengers() {
+    if (_passengerCount > 1) {
+      setState(() {
+        _passengerCount--;
+      });
+      _recalculateFare();
+    }
+  }
+
+  /// Increase passenger count
+  void _increasePassengers() {
+    if (_passengerCount < 4) {
+      // Max 4 passengers for tricycle
+      setState(() {
+        _passengerCount++;
+      });
+      _recalculateFare();
+    }
+  }
+
+  /// Recalculate fare when passenger count changes
+  Future<void> _recalculateFare() async {
+    if (_currentRoute != null && _currentPosition != null) {
+      final fareCalculation = await _bookingService.calculateEnhancedFare(
+        pickupLatitude: _currentPosition!.latitude,
+        pickupLongitude: _currentPosition!.longitude,
+        route: _currentRoute!,
+        passengerCount: _passengerCount,
+        vehicleType: 'tricycle',
+      );
+      if (mounted) {
+        setState(() {
+          _currentFareCalculation = fareCalculation;
+        });
+      }
+    }
+  }
+
+  /// Confirm booking
+  Future<void> _confirmBooking() async {
+    if (_currentPosition == null ||
+        _selectedDestination == null ||
+        _currentRoute == null) {
+      context.showError('Unable to create booking. Please try again.');
+      return;
+    }
+
+    // Check if user already has an active booking
+    if (_bookingService.hasActiveBooking) {
+      context.showError('You already have an active booking.');
+      return;
+    }
+
+    // Default to cash payment if no payment method selected
+    String selectedPaymentMethod = 'cash';
+
+    try {
+      // Create booking locations
+      final pickupLocation = BookingLocation(
+        latitude: _currentPosition!.latitude,
+        longitude: _currentPosition!.longitude,
+        address: _currentAddress,
+      );
+
+      final destination = BookingLocation(
+        latitude: _selectedDestination!.latitude,
+        longitude: _selectedDestination!.longitude,
+        address: _selectedDestination!.name,
+      );
+
+      // Create booking
+      final result = await _bookingService.createBooking(
+        pickupLocation: pickupLocation,
+        destination: destination,
+        route: _currentRoute!,
+        passengerCount: _passengerCount,
+        paymentMethod: selectedPaymentMethod,
+      );
+
+      if (result.success) {
+        if (mounted) {
+          context.showSuccess(
+            'Booking created successfully! Looking for drivers...',
+          );
+          setState(() {
+            _showBookingInformation = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          context.showError(result.message);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showError('Failed to create booking. Please try again.');
+      }
+    }
+  }
+
+  /// Cancel active booking
+  Future<void> _cancelBooking() async {
+    if (_activeBooking == null) return;
+
+    final result = await _bookingService.cancelBooking();
+    if (result.success) {
+      if (mounted) {
+        context.showSuccess('Booking cancelled successfully');
+        // Reset UI state to show search panel again
+        setState(() {
+          _showBookingInformation = false;
+          _selectedDestination = null;
+          _currentRoute = null;
+          // Clear driver markers and routes
+          _driverMarkers.clear();
+          _driverRoutePolylines.clear();
+        });
+      }
+    } else {
+      if (mounted) {
+        context.showError(result.message);
+      }
+    }
+  }
 
   /// Build map markers
   Set<Marker> _buildMarkers() {
@@ -299,6 +627,9 @@ class _HomePageState extends State<HomePage> {
 
     // Add destination markers
     markers.addAll(_destinationMarkers);
+    
+    // Add driver markers (when booking is accepted)
+    markers.addAll(_driverMarkers);
 
     return markers;
   }
@@ -321,7 +652,7 @@ class _HomePageState extends State<HomePage> {
             myLocationEnabled: _locationState.isActive,
             myLocationButtonEnabled: false,
             markers: _buildMarkers(),
-            polylines: _polylines,
+            polylines: {..._polylines, ..._driverRoutePolylines},
           ),
 
           // Top overlay controls (menu + notifications)
@@ -335,12 +666,12 @@ class _HomePageState extends State<HomePage> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Builder(
-                    builder: (context) => _circleIconButton(
+                    builder: (context) => CircleIconButtonWidget(
                       icon: Icons.menu,
                       onTap: () => Scaffold.of(context).openDrawer(),
                     ),
                   ),
-                  _circleIconButton(
+                  CircleIconButtonWidget(
                     icon: Icons.notifications_none_rounded,
                     onTap: () {},
                   ),
@@ -354,283 +685,50 @@ class _HomePageState extends State<HomePage> {
             left: 16,
             right: 16,
             bottom: 16,
-            child: SafeArea(top: false, child: _buildSearchPanel(context)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchPanel(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Where are you going?',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.speed, size: 14, color: Colors.blue.shade600),
-                    const SizedBox(width: 4),
-                    Text(
-                      '20km limit',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.blue.shade700,
-                      ),
+            child: SafeArea(
+              top: false,
+              child: SearchPanelWidget(
+                currentAddress: _currentAddress,
+                serviceUnavailableReason: _serviceUnavailableReason,
+                isServiceAvailable: _isServiceAvailable,
+                selectedDestination: _selectedDestination,
+                currentRoute: _currentRoute,
+                isCalculatingRoute: _isCalculatingRoute,
+                showBookingInformation: _showBookingInformation,
+                passengerCount: _passengerCount,
+                fareCalculation: _currentFareCalculation,
+                activeBooking: _activeBooking,
+                onDestinationSearch: _openDestinationSearch,
+                onNext: _openBookingInformation,
+                onClear: _clearDestination,
+                onCloseBooking: _clearDestination,
+                onDecreasePassengers: _decreasePassengers,
+                onIncreasePassengers: _increasePassengers,
+                onCashPayment: () async {
+                  // Show payment method selection
+                  final selectedPaymentMethod = await Navigator.push<String>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const PaymentMethodScreen(),
                     ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'From',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 6),
-          _locationField(
-            hintText: 'Your location now',
-            displayText: _currentAddress,
-            icon: Icons.location_pin,
-            iconColor: Colors.green,
-            isCurrentLocation: true,
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Where to?',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 6),
-          _locationField(
-            hintText: 'Enter your destination',
-            displayText: _selectedDestination?.name,
-            icon: Icons.location_on_outlined,
-            iconColor: Colors.redAccent,
-            onTap: _openDestinationSearch,
-          ),
-          const SizedBox(height: 12),
-          if (_selectedDestination != null && _currentRoute != null) ...[
-            // Route information
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.route, color: Colors.blue.shade600, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Route to ${_selectedDestination!.name}',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${_currentRoute!.distanceText} • ${_currentRoute!.durationText}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  );
+
+                  if (selectedPaymentMethod != null && mounted) {
+                    // Show success message with selected payment method
+                    final paymentMethodName = selectedPaymentMethod == 'cash'
+                        ? 'Cash'
+                        : 'GCash';
+                    context.showSuccess(
+                      'Payment method set to $paymentMethodName',
+                    );
+                  }
+                },
+                onConfirm: _confirmBooking,
+                onCancelBooking: _cancelBooking,
               ),
             ),
-            const SizedBox(height: 12),
-            // Clear destination button
-            SizedBox(
-              width: 300,
-              child: ElevatedButton(
-                onPressed: _clearDestination,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade600,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  elevation: 2,
-                ),
-                child: const Text(
-                  'Clear Destination',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-          ] else ...[
-            // Choose destination button
-            SizedBox(
-              width: 300,
-              child: ElevatedButton(
-                onPressed: _isCalculatingRoute ? null : _openDestinationSearch,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  elevation: 2,
-                ),
-                child: _isCalculatingRoute
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Text(
-                        'Choose Destination',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-              ),
-            ),
-          ],
+          ),
         ],
-      ),
-    );
-  }
-
-
-  Widget _locationField({
-    required String hintText,
-    String? displayText,
-    required IconData icon,
-    required Color iconColor,
-    bool isCurrentLocation = false,
-    VoidCallback? onTap,
-  }) {
-    return GestureDetector(
-      onTap:
-          onTap ??
-          (isCurrentLocation && displayText != null
-              ? () => DialogUtils.showFullAddressDialog(context, displayText)
-              : null),
-      child: Container(
-        decoration: BoxDecoration(
-          color: isCurrentLocation
-              ? Colors.green.shade50
-              : const Color(0xFFF2F2F4),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isCurrentLocation
-                ? Colors.green.shade200
-                : Colors.black.withOpacity(0.08),
-          ),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        child: Row(
-          children: [
-            Icon(icon, color: iconColor, size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                displayText ?? hintText,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: displayText != null
-                      ? Colors.black87
-                      : Colors.black.withOpacity(0.4),
-                  fontWeight: displayText != null
-                      ? FontWeight.w500
-                      : FontWeight.w400,
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-            ),
-            if (isCurrentLocation && displayText != null)
-              Icon(
-                Icons.visibility_outlined,
-                size: 16,
-                color: Colors.green.shade600,
-              ),
-          ],
-                ),
-              ),
-            );
-          }
-
-  Widget _circleIconButton({required IconData icon, VoidCallback? onTap}) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
-        child: Ink(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.all(10),
-          child: Icon(icon, color: Colors.black87, size: 22),
-        ),
       ),
     );
   }

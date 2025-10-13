@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/foundation.dart';
@@ -111,7 +112,8 @@ class PlacesService {
     required String query,
     required double latitude,
     required double longitude,
-    int radius = 50000, // 50km radius
+    int radius = 20000, // 20km radius default
+    String? region, // e.g., 'ph' to bias to a country
   }) async {
     try {
       final url = Uri.parse(
@@ -119,6 +121,7 @@ class PlacesService {
         '?query=${Uri.encodeComponent(query)}'
         '&location=$latitude,$longitude'
         '&radius=$radius'
+        '${region != null ? '&region=$region' : ''}'
         '&key=$_apiKey',
       );
 
@@ -129,12 +132,39 @@ class PlacesService {
 
         if (data['status'] == 'OK') {
           final results = data['results'] as List<dynamic>;
-          return results
-              .map(
-                (json) =>
-                    PlaceSearchResult.fromJson(json as Map<String, dynamic>),
-              )
+          // Map to models
+          final places = results
+              .map((json) =>
+                  PlaceSearchResult.fromJson(json as Map<String, dynamic>))
               .toList();
+
+          // Filter to within radius and sort by distance ascending (local first)
+          final filteredAndSorted = places
+              .where((p) => _distanceBetweenMeters(
+                        latitude,
+                        longitude,
+                        p.latitude,
+                        p.longitude,
+                      ) <=
+                      radius)
+              .toList()
+            ..sort((a, b) {
+              final da = _distanceBetweenMeters(
+                latitude,
+                longitude,
+                a.latitude,
+                a.longitude,
+              );
+              final db = _distanceBetweenMeters(
+                latitude,
+                longitude,
+                b.latitude,
+                b.longitude,
+              );
+              return da.compareTo(db);
+            });
+
+          return filteredAndSorted;
         } else {
           _log(
             'Places API error: ${data['status']} - ${data['error_message']}',
@@ -235,4 +265,25 @@ class PlacesService {
       print('🗺️ PlacesService: $message');
     }
   }
+
+  /// Haversine distance in meters between two coordinates
+  static double _distanceBetweenMeters(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
+    const double earthRadiusMeters = 6371000; // mean Earth radius
+    final double dLat = _degToRad(lat2 - lat1);
+    final double dLon = _degToRad(lon2 - lon1);
+    final double a =
+        (math.sin(dLat / 2) * math.sin(dLat / 2)) +
+            math.cos(_degToRad(lat1)) *
+                math.cos(_degToRad(lat2)) *
+                (math.sin(dLon / 2) * math.sin(dLon / 2));
+    final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadiusMeters * c;
+  }
+
+  static double _degToRad(double deg) => deg * (3.141592653589793 / 180.0);
 }

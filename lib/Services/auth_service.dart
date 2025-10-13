@@ -4,6 +4,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../Services/firestore_service.dart';
+import '../Services/fcm_service.dart';
 import '../models/user_models.dart';
 
 /// Professional Firebase Authentication Service
@@ -215,6 +216,13 @@ class AuthService {
   /// Sign out current user
   Future<AuthResult> signOut() async {
     try {
+      // Remove FCM token before signing out
+      try {
+        await FCMService().removeFCMToken();
+      } catch (e) {
+        // Failed to remove FCM token: $e
+      }
+
       await _firebaseAuth.signOut();
 
       await signOutFromGoogle();
@@ -237,6 +245,7 @@ class AuthService {
     try {
       // Step 1: Sign in with Google (lazy initialization)
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+
       if (googleUser == null) {
         return AuthResult.error('Gmail sign-in was cancelled by user');
       }
@@ -431,7 +440,7 @@ class AuthService {
       // Check if this Gmail account is already associated with another user
       final email = googleUser.email;
       final existingUserUid = await _getUserUidByEmail(email);
-      
+
       if (existingUserUid != null && existingUserUid != currentUser.uid) {
         // This Gmail is already associated with a different user in Firestore
         return AuthResult.error(
@@ -494,7 +503,9 @@ class AuthService {
       if (_googleSignIn != null) {
         await _googleSignIn!.signOut();
       }
-    } catch (e) {}
+    } catch (e) {
+      // Ignore errors during Google sign-out
+    }
   }
 
   /// Helper method to get user UID by email
@@ -555,6 +566,14 @@ class AuthService {
         }
 
         _updateAuthState(AuthState.authenticated(user));
+        
+        // Store FCM token for push notifications
+        try {
+          await FCMService().storeFCMTokenForCurrentUser();
+        } catch (e) {
+          // Failed to store FCM token: $e
+        }
+        
         return AuthResult.authenticated(user, 'Authentication successful');
       } else {
         const error = 'Authentication failed - no user returned';
@@ -606,6 +625,9 @@ class AuthService {
     required String newPhoneNumber,
   }) async {
     try {
+      // Store the pending phone number for later use
+      _pendingPhoneNumber = newPhoneNumber;
+
       await _firebaseAuth.verifyPhoneNumber(
         phoneNumber: newPhoneNumber,
         verificationCompleted: (PhoneAuthCredential credential) async {
@@ -670,12 +692,89 @@ class AuthService {
   ) async {
     final user = currentUser;
     if (user != null) {
-      // Re-authenticate with the credential to update phone number
-      await user.reauthenticateWithCredential(credential);
+      try {
+        // Check if user has Gmail linked (Google provider)
+        final hasGoogleProvider = user.providerData.any(
+          (provider) => provider.providerId == 'google.com',
+        );
 
-      // Update phone number in Firestore
-      final newPhoneNumber = user.phoneNumber ?? '';
-      await _firestoreService.updatePhoneNumber(newPhoneNumber);
+        if (hasGoogleProvider) {
+          // For Gmail-linked accounts, we need to re-authenticate with Google first
+          // Then link the phone credential
+          await _reauthenticateWithGoogleAndLinkPhone(credential);
+        } else {
+          // For phone-only accounts, re-authenticate with phone credential
+          await user.reauthenticateWithCredential(credential);
+        }
+
+        // Update phone number in Firestore using the pending phone number
+        final phoneNumberToUpdate =
+            _pendingPhoneNumber ?? user.phoneNumber ?? '';
+        if (phoneNumberToUpdate.isNotEmpty) {
+          await _firestoreService.updatePhoneNumber(phoneNumberToUpdate);
+        } else {
+          // If both are empty, try alternative approach
+          await _alternativePhoneUpdate(credential);
+        }
+      } catch (e) {
+        // If re-authentication fails, try alternative approach
+        await _alternativePhoneUpdate(credential);
+      }
+    }
+  }
+
+  /// Re-authenticate with Google and link phone credential
+  Future<void> _reauthenticateWithGoogleAndLinkPhone(
+    PhoneAuthCredential phoneCredential,
+  ) async {
+    try {
+      final user = currentUser;
+      if (user == null) return;
+
+      // For phone number updates, we don't need to re-authenticate with Google
+      // We can directly link the phone credential since the user is already authenticated
+      await user.linkWithCredential(phoneCredential);
+    } catch (e) {
+      // If linking fails, try alternative approach
+      await _alternativePhoneUpdate(phoneCredential);
+    }
+  }
+
+  /// Alternative phone update method for Gmail-linked accounts
+  Future<void> _alternativePhoneUpdate(
+    PhoneAuthCredential phoneCredential,
+  ) async {
+    try {
+      final user = currentUser;
+      if (user == null) return;
+
+      // Check if phone credential is already linked
+      final hasPhoneProvider = user.providerData.any(
+        (provider) => provider.providerId == 'phone',
+      );
+
+      if (!hasPhoneProvider) {
+        // Try to link the phone credential directly
+        await user.linkWithCredential(phoneCredential);
+      }
+
+      // Update phone number in Firestore using pending phone number
+      final phoneNumberToUpdate = _pendingPhoneNumber ?? user.phoneNumber ?? '';
+      if (phoneNumberToUpdate.isNotEmpty) {
+        await _firestoreService.updatePhoneNumber(phoneNumberToUpdate);
+      }
+    } catch (e) {
+      // If linking fails, just update Firestore with the pending phone number
+      // This ensures the phone number is updated even if credential linking fails
+      try {
+        final phoneNumberToUpdate = _pendingPhoneNumber ?? '';
+        if (phoneNumberToUpdate.isNotEmpty) {
+          await _firestoreService.updatePhoneNumber(phoneNumberToUpdate);
+        }
+      } catch (firestoreError) {
+        // If even Firestore update fails, re-throw the original error
+        rethrow;
+      }
     }
   }
 
@@ -759,7 +858,9 @@ class AuthService {
             .collection('users')
             .doc(user.uid)
             .update({
-              'profilePictureUrl': profilePictureUrl.trim().isNotEmpty ? profilePictureUrl : null,
+              'profilePictureUrl': profilePictureUrl.trim().isNotEmpty
+                  ? profilePictureUrl
+                  : null,
               'updatedAt': Timestamp.now(),
             });
       }
@@ -846,9 +947,11 @@ class AuthService {
   /// Delete user's profile pictures from Firebase Storage
   Future<void> _deleteUserProfilePictures(String userId) async {
     try {
-      final storageRef = FirebaseStorage.instance.ref().child('profile_pictures');
+      final storageRef = FirebaseStorage.instance.ref().child(
+        'profile_pictures',
+      );
       final listResult = await storageRef.listAll();
-      
+
       // Find and delete all profile pictures for this user
       for (final item in listResult.items) {
         if (item.name.startsWith('${userId}_')) {
@@ -858,7 +961,7 @@ class AuthService {
     } catch (e) {
       // Don't throw error for storage deletion failures
       // The account deletion should still proceed
-      print('Warning: Failed to delete some profile pictures: $e');
+      // Note: Profile picture deletion failure is non-critical
     }
   }
 
@@ -941,6 +1044,13 @@ abstract class AuthState {
   factory AuthState.authenticated(User user) => _AuthenticatedState(user);
   factory AuthState.unauthenticated() => const _UnauthenticatedState();
   factory AuthState.error(String message) => _ErrorState(message);
+
+  /// Check if the user is authenticated
+  bool get isAuthenticated => this is _AuthenticatedState;
+
+  /// Get the authenticated user if available
+  User? get authenticatedUser =>
+      isAuthenticated ? (this as _AuthenticatedState).user : null;
 }
 
 class _InitialState extends AuthState {

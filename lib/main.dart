@@ -1,15 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:trikego_app/Services/auth_service.dart';
-import 'screens/landing_page.dart';
+import 'package:trikego_app/Services/fcm_service.dart';
 import 'screens/signup_page.dart';
 import 'screens/otp_page.dart';
 import 'screens/signin_page.dart';
 import 'screens/edit_profile_page.dart';
 import 'screens/settings_screen.dart';
+import 'screens/privacy_policy_screen.dart';
+import 'screens/terms_of_service_screen.dart';
+import 'screens/contact_us_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/homepage.dart';
+import 'screens/history_screen.dart';
+import 'screens/payment_method_screen.dart';
+import 'widgets/auth_wrapper.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -30,8 +37,14 @@ void main() async {
   // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
+  // Set up background message handler
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
   // Initialize Auth Service
   await AuthService().initialize();
+
+  // Initialize FCM Service
+  await FCMService().initialize();
 
   runApp(const MyApp());
 }
@@ -92,7 +105,7 @@ class MyApp extends StatelessWidget {
       theme: AppTheme.themeData,
       initialRoute: '/',
       routes: {
-        '/': (context) => const LandingPage(),
+        '/': (context) => const AuthWrapper(),
         '/signin': (context) => const SignInPage(),
         '/signup': (context) => const SignUpPage(),
         '/otp': (context) {
@@ -100,8 +113,13 @@ class MyApp extends StatelessWidget {
           return OtpPage(phoneNumber: args ?? '', lastName: '', firstName: '');
         },
         '/homepage': (context) => const HomePage(),
+        '/history': (context) => const HistoryScreen(),
         '/edit_profile': (context) => const EditProfilePage(),
         '/settings': (context) => const SettingsScreen(),
+        '/payment_method': (context) => const PaymentMethodScreen(),
+        '/privacy_policy': (context) => const PrivacyPolicyScreen(),
+        '/terms_of_service': (context) => const TermsOfServiceScreen(),
+        '/contact_us': (context) => const ContactUsScreen(),
       },
     );
   }

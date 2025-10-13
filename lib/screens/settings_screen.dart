@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../main.dart' show AppColors;
 import 'account_settings_screen.dart';
+import 'privacy_policy_screen.dart';
+import 'contact_us_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -102,22 +104,18 @@ class SettingsScreen extends StatelessWidget {
   }
 
   void _navigateToPrivacyPolicy(BuildContext context) {
-    // TODO: Implement privacy policy navigation
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Privacy Policy - Coming soon!'),
-        duration: Duration(seconds: 2),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const PrivacyPolicyScreen(),
       ),
     );
   }
 
   void _navigateToContactUs(BuildContext context) {
-    // TODO: Implement contact us navigation
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Contact Us - Coming soon!'),
-        duration: Duration(seconds: 2),
-      ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const ContactUsScreen()),
     );
   }
 }
