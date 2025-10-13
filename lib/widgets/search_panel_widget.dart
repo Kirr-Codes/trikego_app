@@ -7,6 +7,7 @@ import '../models/booking_model.dart';
 import 'location_field_widget.dart';
 import 'booking_information_widget.dart';
 import 'active_booking_widget.dart';
+import 'driver_accepted_booking_widget.dart';
 
 class SearchPanelWidget extends StatelessWidget {
   final String currentAddress;
@@ -54,8 +55,17 @@ class SearchPanelWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // If there's an active booking, only show the active booking panel
+    // If there's an active booking, show appropriate widget based on status
     if (activeBooking != null && activeBooking!.isActive) {
+      // Show driver accepted UI when booking is accepted
+      if (activeBooking!.status == BookingStatus.accepted) {
+        return DriverAcceptedBookingWidget(
+          activeBooking: activeBooking!,
+          onCancelBooking: onCancelBooking ?? () {},
+        );
+      }
+      
+      // Show regular active booking widget for other statuses
       return ActiveBookingWidget(
         activeBooking: activeBooking!,
         onCancelBooking: onCancelBooking ?? () {},

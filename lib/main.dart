@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:trikego_app/Services/auth_service.dart';
+import 'package:trikego_app/Services/fcm_service.dart';
 import 'screens/signup_page.dart';
 import 'screens/otp_page.dart';
 import 'screens/signin_page.dart';
@@ -35,8 +37,14 @@ void main() async {
   // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
+  // Set up background message handler
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
   // Initialize Auth Service
   await AuthService().initialize();
+
+  // Initialize FCM Service
+  await FCMService().initialize();
 
   runApp(const MyApp());
 }

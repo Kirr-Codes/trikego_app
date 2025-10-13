@@ -55,12 +55,16 @@ class _HomePageState extends State<HomePage> {
   EnhancedFareCalculation? _currentFareCalculation;
   Booking? _activeBooking;
   StreamSubscription<Booking?>? _bookingSubscription;
+  
+  // Driver tracking state
+  Set<Polyline> _driverRoutePolylines = {};
+  Set<Marker> _driverMarkers = {};
 
   static const LatLng _defaultLocation = LatLng(
     14.8312,
     120.7895,
   ); // Paombong Bulacan Municipal Hall
-  static const double _serviceRadiusKm = 2.0; // 2km service radius
+  static const double _serviceRadiusKm = 10.0; // 2km service radius
 
   @override
   void initState() {
@@ -92,8 +96,112 @@ class _HomePageState extends State<HomePage> {
             _showBookingInformation = false;
           }
         });
+        
+        // Handle driver location and route display
+        _handleBookingUpdate(booking);
       }
     });
+  }
+
+  /// Handle booking updates and driver location display
+  Future<void> _handleBookingUpdate(Booking? booking) async {
+    if (booking == null || !booking.isActive) {
+      // Clear driver markers and routes when no active booking
+      setState(() {
+        _driverMarkers.clear();
+        _driverRoutePolylines.clear();
+      });
+      return;
+    }
+
+    // If booking is accepted and has driver location, display driver on map
+    if (booking.status == BookingStatus.accepted && booking.driverLocation != null) {
+      await _updateDriverLocationOnMap(booking);
+    }
+  }
+
+  /// Update driver location on map and show route to pickup
+  Future<void> _updateDriverLocationOnMap(Booking booking) async {
+    if (booking.driverLocation == null || _currentPosition == null) return;
+
+    try {
+      final driverLatLng = booking.driverLocation!.latLng;
+      final pickupLatLng = booking.pickupLocation.latLng;
+
+      // Create driver marker
+      final driverMarker = Marker(
+        markerId: const MarkerId('driver_location'),
+        position: driverLatLng,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: InfoWindow(
+          title: 'Your Driver',
+          snippet: booking.driver?.fullName ?? 'Driver approaching',
+        ),
+      );
+
+      // Get route from driver to pickup location
+      final driverToPickupRoute = await RouteService.getRoute(
+        startLatitude: driverLatLng.latitude,
+        startLongitude: driverLatLng.longitude,
+        endLatitude: pickupLatLng.latitude,
+        endLongitude: pickupLatLng.longitude,
+      );
+
+      setState(() {
+        // Update driver marker
+        _driverMarkers.clear();
+        _driverMarkers.add(driverMarker);
+
+        // Update driver route polyline
+        _driverRoutePolylines.clear();
+        if (driverToPickupRoute != null) {
+          _driverRoutePolylines.add(
+            Polyline(
+              polylineId: const PolylineId('driver_to_pickup'),
+              points: driverToPickupRoute.points,
+              color: Colors.blue,
+              width: 4,
+              patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+            ),
+          );
+        }
+      });
+
+      // Adjust camera to show both driver and pickup locations
+      _fitCameraToShowDriverAndPickup(driverLatLng, pickupLatLng);
+
+    } catch (e) {
+      // Handle error silently
+    }
+  }
+
+
+  /// Fit camera to show both driver and pickup locations
+  void _fitCameraToShowDriverAndPickup(LatLng driverLocation, LatLng pickupLocation) {
+    if (_mapController == null) return;
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        driverLocation.latitude < pickupLocation.latitude 
+            ? driverLocation.latitude 
+            : pickupLocation.latitude,
+        driverLocation.longitude < pickupLocation.longitude 
+            ? driverLocation.longitude 
+            : pickupLocation.longitude,
+      ),
+      northeast: LatLng(
+        driverLocation.latitude > pickupLocation.latitude 
+            ? driverLocation.latitude 
+            : pickupLocation.latitude,
+        driverLocation.longitude > pickupLocation.longitude 
+            ? driverLocation.longitude 
+            : pickupLocation.longitude,
+      ),
+    );
+
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(bounds, 100.0),
+    );
   }
 
   /// Initialize location service and set up listeners
@@ -247,20 +355,6 @@ class _HomePageState extends State<HomePage> {
   /// Calculate route to selected destination
   Future<void> _calculateRoute() async {
     if (_currentPosition == null || _selectedDestination == null) return;
-
-    // Check distance limit before calculating route
-    final distance = RouteService.calculateDistance(
-      _currentPosition!,
-      LatLng(_selectedDestination!.latitude, _selectedDestination!.longitude),
-    );
-
-    const double maxDistanceKm = 20.0; // 20km limit
-    const double maxDistanceMeters = maxDistanceKm * 1000;
-
-    if (distance > maxDistanceMeters) {
-      DialogUtils.showDistanceLimitDialog(context, distance, _clearDestination);
-      return;
-    }
 
     setState(() => _isCalculatingRoute = true);
 
@@ -500,6 +594,9 @@ class _HomePageState extends State<HomePage> {
           _showBookingInformation = false;
           _selectedDestination = null;
           _currentRoute = null;
+          // Clear driver markers and routes
+          _driverMarkers.clear();
+          _driverRoutePolylines.clear();
         });
       }
     } else {
@@ -530,6 +627,9 @@ class _HomePageState extends State<HomePage> {
 
     // Add destination markers
     markers.addAll(_destinationMarkers);
+    
+    // Add driver markers (when booking is accepted)
+    markers.addAll(_driverMarkers);
 
     return markers;
   }
@@ -552,7 +652,7 @@ class _HomePageState extends State<HomePage> {
             myLocationEnabled: _locationState.isActive,
             myLocationButtonEnabled: false,
             markers: _buildMarkers(),
-            polylines: _polylines,
+            polylines: {..._polylines, ..._driverRoutePolylines},
           ),
 
           // Top overlay controls (menu + notifications)
@@ -601,8 +701,7 @@ class _HomePageState extends State<HomePage> {
                 onDestinationSearch: _openDestinationSearch,
                 onNext: _openBookingInformation,
                 onClear: _clearDestination,
-                onCloseBooking: () =>
-                    setState(() => _showBookingInformation = false),
+                onCloseBooking: _clearDestination,
                 onDecreasePassengers: _decreasePassengers,
                 onIncreasePassengers: _increasePassengers,
                 onCashPayment: () async {
@@ -613,11 +712,15 @@ class _HomePageState extends State<HomePage> {
                       builder: (context) => const PaymentMethodScreen(),
                     ),
                   );
-                  
+
                   if (selectedPaymentMethod != null && mounted) {
                     // Show success message with selected payment method
-                    final paymentMethodName = selectedPaymentMethod == 'cash' ? 'Cash' : 'GCash';
-                    context.showSuccess('Payment method set to $paymentMethodName');
+                    final paymentMethodName = selectedPaymentMethod == 'cash'
+                        ? 'Cash'
+                        : 'GCash';
+                    context.showSuccess(
+                      'Payment method set to $paymentMethodName',
+                    );
                   }
                 },
                 onConfirm: _confirmBooking,

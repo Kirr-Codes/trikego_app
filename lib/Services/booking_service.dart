@@ -5,6 +5,7 @@ import '../models/booking_model.dart';
 import '../models/user_models.dart';
 import '../Services/backend_fare_calculation_service.dart';
 import '../Services/route_service.dart';
+import '../Services/driver_service.dart';
 import '../models/fare_config_model.dart';
 
 /// Service result for booking operations
@@ -53,6 +54,7 @@ class BookingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final BackendFareCalculationService _fareService = BackendFareCalculationService();
+  final DriverService _driverService = DriverService();
 
   // Collection names
   static const String _bookingsCollection = 'bookings';
@@ -288,9 +290,23 @@ class BookingService {
         .collection(_bookingsCollection)
         .doc(bookingId)
         .snapshots()
-        .listen((snapshot) {
+        .listen((snapshot) async {
       if (snapshot.exists) {
-        final booking = Booking.fromFirestore(snapshot);
+        var booking = Booking.fromFirestore(snapshot);
+        
+        // If booking is accepted and has a driver ID, fetch driver information
+        if (booking.status == BookingStatus.accepted && 
+            booking.driverId != null && 
+            booking.driver == null) {
+          final driver = await _driverService.getDriverById(booking.driverId!);
+          if (driver != null) {
+            booking = booking.copyWith(driver: driver);
+          }
+        }
+        
+        // Driver location updates are already included in the booking document
+        // No need for separate listener since we're already listening to the booking
+        
         _activeBooking = booking;
         _activeBookingController.add(booking);
 
@@ -302,6 +318,7 @@ class BookingService {
       }
     });
   }
+
 
   /// Calculate enhanced fare for a route without creating a booking
   Future<EnhancedFareCalculation> calculateEnhancedFare({

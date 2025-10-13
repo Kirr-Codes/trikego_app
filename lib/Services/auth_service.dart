@@ -4,6 +4,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../Services/firestore_service.dart';
+import '../Services/fcm_service.dart';
 import '../models/user_models.dart';
 
 /// Professional Firebase Authentication Service
@@ -215,6 +216,13 @@ class AuthService {
   /// Sign out current user
   Future<AuthResult> signOut() async {
     try {
+      // Remove FCM token before signing out
+      try {
+        await FCMService().removeFCMToken();
+      } catch (e) {
+        // Failed to remove FCM token: $e
+      }
+
       await _firebaseAuth.signOut();
 
       await signOutFromGoogle();
@@ -558,6 +566,14 @@ class AuthService {
         }
 
         _updateAuthState(AuthState.authenticated(user));
+        
+        // Store FCM token for push notifications
+        try {
+          await FCMService().storeFCMTokenForCurrentUser();
+        } catch (e) {
+          // Failed to store FCM token: $e
+        }
+        
         return AuthResult.authenticated(user, 'Authentication successful');
       } else {
         const error = 'Authentication failed - no user returned';
