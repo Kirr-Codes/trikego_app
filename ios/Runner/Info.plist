@@ -39,7 +39,7 @@
 				<string>Editor</string>
 				<key>CFBundleURLSchemes</key>
 				<array>
-				<string>com.googleusercontent.apps.729849873791-u5k7v2b9799ip5qfeh4pphtv7a7j4uor</string>
+					<string>com.googleusercontent.apps.729849873791-u5k7v2b9799ip5qfeh4pphtv7a7j4uor</string>
 				</array>
 			</dict>
 		</array>
@@ -61,6 +61,8 @@
 		<key>UIApplicationSupportsIndirectInputEvents</key>
 		<true/>
 		<key>UIStatusBarHidden</key>
+		<false/>
+		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
 	</dict>
 </plist>
