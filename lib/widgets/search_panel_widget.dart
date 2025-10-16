@@ -57,15 +57,19 @@ class SearchPanelWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     // If there's an active booking, show appropriate widget based on status
     if (activeBooking != null && activeBooking!.isActive) {
-      // Show driver accepted UI when booking is accepted
-      if (activeBooking!.status == BookingStatus.accepted) {
+      // Show driver accepted UI when booking is accepted, driver en route, arrived, picked up, or in progress
+      if (activeBooking!.status == BookingStatus.accepted || 
+          activeBooking!.status == BookingStatus.driverEnRoute ||
+          activeBooking!.status == BookingStatus.arrived ||
+          activeBooking!.status == BookingStatus.pickedUp ||
+          activeBooking!.status == BookingStatus.inProgress) {
         return DriverAcceptedBookingWidget(
           activeBooking: activeBooking!,
           onCancelBooking: onCancelBooking ?? () {},
         );
       }
       
-      // Show regular active booking widget for other statuses
+      // Show regular active booking widget for other statuses (pending, etc.)
       return ActiveBookingWidget(
         activeBooking: activeBooking!,
         onCancelBooking: onCancelBooking ?? () {},

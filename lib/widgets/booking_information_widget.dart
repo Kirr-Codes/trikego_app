@@ -257,7 +257,7 @@ class BookingInformationWidget extends StatelessWidget {
         ),
         const SizedBox(height: 8),
 
-        // Total Fare
+        // Fare Summary
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -266,16 +266,35 @@ class BookingInformationWidget extends StatelessWidget {
             border: Border.all(color: Colors.grey.shade200),
           ),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const Text(
+                'Fare Summary',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              _buildFareRow('Base Fare', fareCalculation?.baseFare ?? 0.0),
+              _buildFareRow('Distance Fare', (fareCalculation?.driverToPickupFare ?? 0.0) + (fareCalculation?.pickupToDestinationFare ?? 0.0)),
+              if ((fareCalculation?.passengerFare ?? 0.0) > 0)
+                _buildFareRow('Passenger Fare', fareCalculation!.passengerFare),
+              if ((fareCalculation?.timeMultiplier ?? 1.0) != 1.0)
+                _buildMultiplierRow('Time Multiplier', fareCalculation!.timeMultiplier),
+              const SizedBox(height: 4),
+              Container(height: 1, color: Colors.grey.shade300),
+              const SizedBox(height: 4),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
                     'Total Fare',
                     style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.grey,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
+                      color: Colors.black,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   Text(
@@ -350,6 +369,63 @@ class BookingInformationWidget extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildFareRow(String label, double amount) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              color: Colors.grey,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          Text(
+            '₱${amount.toStringAsFixed(2)}',
+            style: const TextStyle(
+              fontSize: 10,
+              color: Colors.black87,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMultiplierRow(String label, double multiplier) {
+    final percentage = ((multiplier - 1.0) * 100).toStringAsFixed(0);
+    final isIncrease = multiplier > 1.0;
+    
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              color: Colors.grey,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          Text(
+            '${isIncrease ? '+' : ''}$percentage%',
+            style: TextStyle(
+              fontSize: 10,
+              color: isIncrease ? Colors.orange.shade700 : Colors.green.shade700,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

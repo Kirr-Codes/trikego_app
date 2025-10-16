@@ -1,23 +1,28 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../Services/location_service.dart';
 import '../Services/address_service.dart';
 import '../Services/places_service.dart';
 import '../Services/route_service.dart';
 import '../Services/booking_service.dart';
+import '../Services/notification_service.dart';
 import '../models/fare_config_model.dart';
 import '../models/booking_model.dart';
 import '../widgets/profile_drawer.dart';
 import '../widgets/circle_icon_button_widget.dart';
 import '../widgets/search_panel_widget.dart';
+import '../widgets/driver_cancelled_dialog.dart';
 import '../utils/snackbar_utils.dart';
 import '../utils/dialog_utils.dart';
 import '../main.dart' show AppColors;
 import 'destination_search_screen.dart';
 import 'service_unavailable_page.dart';
 import 'payment_method_screen.dart';
+import 'notifications_screen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -30,6 +35,7 @@ class _HomePageState extends State<HomePage> {
   final LocationService _locationService = LocationService();
   final AddressService _addressService = AddressService();
   final BookingService _bookingService = BookingService();
+  final NotificationService _notificationService = NotificationService();
   GoogleMapController? _mapController;
 
   LatLng? _currentPosition;
@@ -38,39 +44,38 @@ class _HomePageState extends State<HomePage> {
   StreamSubscription<LatLng>? _locationSubscription;
   StreamSubscription<LocationState>? _stateSubscription;
 
-  // Destination and route state
   PlaceSearchResult? _selectedDestination;
   RouteResult? _currentRoute;
   Set<Polyline> _polylines = {};
   Set<Marker> _destinationMarkers = {};
   bool _isCalculatingRoute = false;
 
-  // Service availability state
   bool _isServiceAvailable = true;
   String _serviceUnavailableReason = '';
 
-  // Booking state
   bool _showBookingInformation = false;
   int _passengerCount = 1;
   EnhancedFareCalculation? _currentFareCalculation;
   Booking? _activeBooking;
   StreamSubscription<Booking?>? _bookingSubscription;
-  
-  // Driver tracking state
+
   Set<Polyline> _driverRoutePolylines = {};
   Set<Marker> _driverMarkers = {};
+  BitmapDescriptor? _driverIcon;
 
   static const LatLng _defaultLocation = LatLng(
     14.8312,
     120.7895,
-  ); // Paombong Bulacan Municipal Hall
-  static const double _serviceRadiusKm = 10.0; // 2km service radius
+  );
+  static const double _serviceRadiusKm = 10.0;
 
   @override
   void initState() {
     super.initState();
+    _loadDriverMarker();
     _initializeLocation();
     _initializeBookingService();
+    _notificationService.initialize();
   }
 
   @override
@@ -82,45 +87,105 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  /// Initialize booking service and set up listeners
+  /// Load custom driver marker icon
+  Future<void> _loadDriverMarker() async {
+    try {
+      final ByteData data = await rootBundle.load('assets/images/driver_marker.png');
+      final ui.Codec codec = await ui.instantiateImageCodec(
+        data.buffer.asUint8List(),
+        targetWidth: 35,
+      );
+      final ui.FrameInfo frameInfo = await codec.getNextFrame();
+      final ByteData? byteData = await frameInfo.image.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+      final Uint8List resizedBytes = byteData!.buffer.asUint8List();
+      
+      setState(() {
+        _driverIcon = BitmapDescriptor.bytes(resizedBytes);
+      });
+    } catch (e) {}
+  }
+
   void _initializeBookingService() {
-    // Listen to active booking updates
+    _bookingService.initialize();
     _bookingSubscription = _bookingService.activeBookingStream.listen((
       booking,
     ) {
       if (mounted) {
+        if (_activeBooking != null &&
+            booking != null &&
+            _activeBooking!.status != BookingStatus.cancelled &&
+            booking.status == BookingStatus.cancelled &&
+            booking.cancelledBy == 'driver') {
+          _showDriverCancelledDialog();
+        }
+
         setState(() {
           _activeBooking = booking;
-          // If there's an active booking, hide booking information UI
           if (booking != null && booking.isActive) {
             _showBookingInformation = false;
           }
         });
-        
-        // Handle driver location and route display
+
         _handleBookingUpdate(booking);
       }
     });
   }
 
+  /// Show dialog when driver cancels the booking
+  void _showDriverCancelledDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => DriverCancelledDialog(
+        onContinue: () async {
+          Navigator.of(context).pop();
+          if (_selectedDestination != null && _currentRoute != null) {
+            await _confirmBooking();
+          }
+        },
+        onCancel: () {
+          Navigator.of(context).pop();
+          setState(() {
+            _selectedDestination = null;
+            _currentRoute = null;
+            _polylines.clear();
+            _destinationMarkers.clear();
+            _showBookingInformation = false;
+          });
+        },
+      ),
+    );
+  }
+
   /// Handle booking updates and driver location display
   Future<void> _handleBookingUpdate(Booking? booking) async {
     if (booking == null || !booking.isActive) {
-      // Clear driver markers and routes when no active booking
       setState(() {
         _driverMarkers.clear();
         _driverRoutePolylines.clear();
+        _polylines.clear();
+        _destinationMarkers.clear();
       });
       return;
     }
 
-    // If booking is accepted and has driver location, display driver on map
-    if (booking.status == BookingStatus.accepted && booking.driverLocation != null) {
-      await _updateDriverLocationOnMap(booking);
+    if (booking.status == BookingStatus.accepted) {
+      if (booking.driverLocation != null) {
+        await _updateDriverLocationOnMap(booking);
+      } else {
+        await _showPickupToDestinationRoute(booking);
+      }
+    } else if (booking.status == BookingStatus.pickedUp || booking.status == BookingStatus.inProgress) {
+      if (booking.driverLocation != null) {
+        await _updateDriverToDestinationOnMap(booking);
+      } else {
+        await _showPickupToDestinationRoute(booking);
+      }
     }
   }
 
-  /// Update driver location on map and show route to pickup
   Future<void> _updateDriverLocationOnMap(Booking booking) async {
     if (booking.driverLocation == null || _currentPosition == null) return;
 
@@ -128,18 +193,17 @@ class _HomePageState extends State<HomePage> {
       final driverLatLng = booking.driverLocation!.latLng;
       final pickupLatLng = booking.pickupLocation.latLng;
 
-      // Create driver marker
       final driverMarker = Marker(
         markerId: const MarkerId('driver_location'),
         position: driverLatLng,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        icon: _driverIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        anchor: const Offset(0.5, 0.5),
         infoWindow: InfoWindow(
           title: 'Your Driver',
           snippet: booking.driver?.fullName ?? 'Driver approaching',
         ),
       );
 
-      // Get route from driver to pickup location
       final driverToPickupRoute = await RouteService.getRoute(
         startLatitude: driverLatLng.latitude,
         startLongitude: driverLatLng.longitude,
@@ -148,65 +212,180 @@ class _HomePageState extends State<HomePage> {
       );
 
       setState(() {
-        // Update driver marker
         _driverMarkers.clear();
         _driverMarkers.add(driverMarker);
 
-        // Update driver route polyline
+        _polylines.clear();
+        _destinationMarkers.clear();
+
         _driverRoutePolylines.clear();
         if (driverToPickupRoute != null) {
           _driverRoutePolylines.add(
             Polyline(
               polylineId: const PolylineId('driver_to_pickup'),
               points: driverToPickupRoute.points,
-              color: Colors.blue,
-              width: 4,
-              patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+              color: AppColors.primary,
+              width: 5,
             ),
           );
         }
       });
 
-      // Adjust camera to show both driver and pickup locations
+      // Always update camera to follow driver and show pickup location
       _fitCameraToShowDriverAndPickup(driverLatLng, pickupLatLng);
-
-    } catch (e) {
-      // Handle error silently
-    }
+    } catch (e) {}
   }
 
-
   /// Fit camera to show both driver and pickup locations
-  void _fitCameraToShowDriverAndPickup(LatLng driverLocation, LatLng pickupLocation) {
+  void _fitCameraToShowDriverAndPickup(
+    LatLng driverLocation,
+    LatLng pickupLocation,
+  ) {
     if (_mapController == null) return;
 
     final bounds = LatLngBounds(
       southwest: LatLng(
-        driverLocation.latitude < pickupLocation.latitude 
-            ? driverLocation.latitude 
+        driverLocation.latitude < pickupLocation.latitude
+            ? driverLocation.latitude
             : pickupLocation.latitude,
-        driverLocation.longitude < pickupLocation.longitude 
-            ? driverLocation.longitude 
+        driverLocation.longitude < pickupLocation.longitude
+            ? driverLocation.longitude
             : pickupLocation.longitude,
       ),
       northeast: LatLng(
-        driverLocation.latitude > pickupLocation.latitude 
-            ? driverLocation.latitude 
+        driverLocation.latitude > pickupLocation.latitude
+            ? driverLocation.latitude
             : pickupLocation.latitude,
-        driverLocation.longitude > pickupLocation.longitude 
-            ? driverLocation.longitude 
+        driverLocation.longitude > pickupLocation.longitude
+            ? driverLocation.longitude
             : pickupLocation.longitude,
       ),
     );
 
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 100.0),
-    );
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100.0));
   }
 
-  /// Initialize location service and set up listeners
+  Future<void> _updateDriverToDestinationOnMap(Booking booking) async {
+    if (booking.driverLocation == null) return;
+
+    try {
+      final driverLatLng = booking.driverLocation!.latLng;
+      final destinationLatLng = booking.destination.latLng;
+
+      final driverMarker = Marker(
+        markerId: const MarkerId('driver_location'),
+        position: driverLatLng,
+        icon: _driverIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        anchor: const Offset(0.5, 0.5),
+        infoWindow: InfoWindow(
+          title: 'Your Driver',
+          snippet: booking.driver?.fullName ?? 'En route to destination',
+        ),
+      );
+
+      final destinationMarker = Marker(
+        markerId: const MarkerId('destination'),
+        position: destinationLatLng,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: InfoWindow(
+          title: 'Destination',
+          snippet: booking.destination.address,
+        ),
+      );
+
+      final driverToDestinationRoute = await RouteService.getRoute(
+        startLatitude: driverLatLng.latitude,
+        startLongitude: driverLatLng.longitude,
+        endLatitude: destinationLatLng.latitude,
+        endLongitude: destinationLatLng.longitude,
+      );
+
+      setState(() {
+        _driverMarkers.clear();
+        _driverMarkers.add(driverMarker);
+        _destinationMarkers = {destinationMarker};
+        _polylines.clear();
+        _driverRoutePolylines.clear();
+        if (driverToDestinationRoute != null) {
+          _driverRoutePolylines.add(
+            Polyline(
+              polylineId: const PolylineId('driver_to_destination'),
+              points: driverToDestinationRoute.points,
+              color: AppColors.primary,
+              width: 5,
+            ),
+          );
+        }
+      });
+
+      // Always update camera to follow driver and show destination
+      _fitCameraToShowDriverAndDestination(driverLatLng, destinationLatLng);
+    } catch (e) {}
+  }
+
+  void _fitCameraToShowDriverAndDestination(
+    LatLng driverLocation,
+    LatLng destinationLocation,
+  ) {
+    if (_mapController == null) return;
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        driverLocation.latitude < destinationLocation.latitude
+            ? driverLocation.latitude
+            : destinationLocation.latitude,
+        driverLocation.longitude < destinationLocation.longitude
+            ? driverLocation.longitude
+            : destinationLocation.longitude,
+      ),
+      northeast: LatLng(
+        driverLocation.latitude > destinationLocation.latitude
+            ? driverLocation.latitude
+            : destinationLocation.latitude,
+        driverLocation.longitude > destinationLocation.longitude
+            ? driverLocation.longitude
+            : destinationLocation.longitude,
+      ),
+    );
+
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100.0));
+  }
+
+  /// Show pickup to destination route when ride is in progress
+  Future<void> _showPickupToDestinationRoute(Booking booking) async {
+    try {
+      setState(() {
+        _driverRoutePolylines.clear();
+      });
+
+      final destinationMarker = Marker(
+        markerId: const MarkerId('destination'),
+        position: booking.destination.latLng,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: InfoWindow(
+          title: 'Destination',
+          snippet: booking.destination.address,
+        ),
+      );
+
+      setState(() {
+        _destinationMarkers = {destinationMarker};
+        _polylines = {
+          Polyline(
+            polylineId: const PolylineId('pickup_to_destination'),
+            points: booking.route.points,
+            color: AppColors.primary,
+            width: 5,
+          ),
+        };
+      });
+
+      if (booking.route.points.isNotEmpty) {
+        _fitCameraToRoute(booking.route.points);
+      }
+    } catch (e) {}
+  }
   Future<void> _initializeLocation() async {
-    // Listen to location updates
     _locationSubscription = _locationService.locationStream.listen((
       location,
     ) async {
@@ -214,15 +393,11 @@ class _HomePageState extends State<HomePage> {
         setState(() => _currentPosition = location);
         _updateMapCamera(location);
 
-        // Check service availability
         _checkServiceAvailability(location);
-
-        // Get address for this location
         _updateAddress(location);
       }
     });
 
-    // Listen to state changes
     _stateSubscription = _locationService.stateStream.listen((state) {
       if (mounted) {
         setState(() => _locationState = state);
@@ -230,7 +405,6 @@ class _HomePageState extends State<HomePage> {
       }
     });
 
-    // Initialize service
     final success = await _locationService.initialize();
     if (!success && mounted) {
       setState(() {
@@ -562,9 +736,6 @@ class _HomePageState extends State<HomePage> {
 
       if (result.success) {
         if (mounted) {
-          context.showSuccess(
-            'Booking created successfully! Looking for drivers...',
-          );
           setState(() {
             _showBookingInformation = false;
           });
@@ -588,7 +759,6 @@ class _HomePageState extends State<HomePage> {
     final result = await _bookingService.cancelBooking();
     if (result.success) {
       if (mounted) {
-        context.showSuccess('Booking cancelled successfully');
         // Reset UI state to show search panel again
         setState(() {
           _showBookingInformation = false;
@@ -610,8 +780,12 @@ class _HomePageState extends State<HomePage> {
   Set<Marker> _buildMarkers() {
     final markers = <Marker>{};
 
-    // Add user location marker
-    if (_currentPosition != null) {
+    // Add user location marker ONLY if passenger has not been picked up
+    // When passenger is picked up, the driver marker represents the passenger's location
+    final isPassengerPickedUp = _activeBooking?.status == BookingStatus.pickedUp ||
+                                 _activeBooking?.status == BookingStatus.inProgress;
+    
+    if (_currentPosition != null && !isPassengerPickedUp) {
       markers.add(
         Marker(
           markerId: const MarkerId('user_location'),
@@ -627,7 +801,7 @@ class _HomePageState extends State<HomePage> {
 
     // Add destination markers
     markers.addAll(_destinationMarkers);
-    
+
     // Add driver markers (when booking is accepted)
     markers.addAll(_driverMarkers);
 
@@ -649,7 +823,7 @@ class _HomePageState extends State<HomePage> {
               target: _currentPosition ?? _defaultLocation,
               zoom: 15,
             ),
-            myLocationEnabled: _locationState.isActive,
+            myLocationEnabled: false,
             myLocationButtonEnabled: false,
             markers: _buildMarkers(),
             polylines: {..._polylines, ..._driverRoutePolylines},
@@ -671,9 +845,60 @@ class _HomePageState extends State<HomePage> {
                       onTap: () => Scaffold.of(context).openDrawer(),
                     ),
                   ),
-                  CircleIconButtonWidget(
-                    icon: Icons.notifications_none_rounded,
-                    onTap: () {},
+                  StreamBuilder<int>(
+                    stream: _notificationService.unreadCountStream,
+                    builder: (context, snapshot) {
+                      final unreadCount = snapshot.data ?? 0;
+                      return Stack(
+                        children: [
+                          CircleIconButtonWidget(
+                            icon: Icons.notifications_none_rounded,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const NotificationsScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          if (unreadCount > 0)
+                            Positioned(
+                              right: 4,
+                              top: 4,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 2,
+                                  ),
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 18,
+                                  minHeight: 18,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    unreadCount > 99
+                                        ? '99+'
+                                        : unreadCount.toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),

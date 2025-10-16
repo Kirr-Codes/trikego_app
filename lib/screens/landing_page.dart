@@ -32,7 +32,7 @@ class LandingPage extends StatelessWidget {
                         maxHeight: 200,
                       ),
                       child: Image.asset(
-                        'assets/images/landingpage_logo.png',
+                        'assets/images/final_logo.png',
                         fit: BoxFit.contain,
                       ),
                     ),
@@ -61,9 +61,9 @@ class LandingPage extends StatelessWidget {
                     ),
                   ),
                   padding: EdgeInsets.fromLTRB(
-                    24, 
-                    32, 
-                    24, 
+                    24,
+                    32,
+                    24,
                     24 + MediaQuery.of(context).padding.bottom,
                   ),
                   child: Column(
@@ -79,7 +79,7 @@ class LandingPage extends StatelessWidget {
                         ),
                         textAlign: TextAlign.justify,
                       ),
-                      const Spacer(),
+                      const SizedBox(height: 38),
                       Column(
                         children: [
                           SizedBox(

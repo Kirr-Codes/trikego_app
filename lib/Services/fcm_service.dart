@@ -5,6 +5,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'notification_service.dart';
 
 /// FCM Service for passenger app
 /// Handles Firebase Cloud Messaging token management and notifications
@@ -17,8 +18,10 @@ class FCMService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
+  final NotificationService _notificationService = NotificationService();
   
   static const String _fcmTokensCollection = 'fcm_tokens';
+  final Map<String, DateTime> _notificationTimestamps = {};
 
   /// Initialize FCM service
   Future<void> initialize() async {
@@ -121,11 +124,22 @@ class FCMService {
 
   /// Handle foreground messages
   void _handleForegroundMessage(RemoteMessage message) {
-    _showForegroundNotification(message).catchError((error) {
-      // Silent error handling
-    });
+    final messageType = message.data['type'] ?? 'general';
+    final bookingId = message.data['bookingId'] ?? message.data['booking_id'] ?? '';
+    final notificationKey = '${messageType}_$bookingId';
     
-    final messageType = message.data['type'];
+    final now = DateTime.now();
+    if (_notificationTimestamps.containsKey(notificationKey)) {
+      final lastShown = _notificationTimestamps[notificationKey]!;
+      if (now.difference(lastShown).inSeconds < 30) return;
+    }
+    
+    _notificationTimestamps[notificationKey] = now;
+    _cleanupOldTimestamps();
+    
+    _showForegroundNotification(message).catchError((_) {});
+    _storeNotificationInFirestore(message);
+    
     switch (messageType) {
       case 'booking_cancellation':
         _handleBookingCancellation(message);
@@ -143,6 +157,28 @@ class FCMService {
         _handleTripCompleted(message);
         break;
     }
+  }
+  
+  void _cleanupOldTimestamps() {
+    final now = DateTime.now();
+    _notificationTimestamps.removeWhere(
+      (key, timestamp) => now.difference(timestamp).inMinutes > 5
+    );
+  }
+  
+  Future<void> _storeNotificationInFirestore(RemoteMessage message) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return;
+      
+      await _notificationService.storeNotification(
+        userId: user.uid,
+        title: message.notification?.title ?? 'Notification',
+        body: message.notification?.body ?? 'You have a new notification',
+        type: message.data['type'] ?? 'general',
+        data: message.data,
+      );
+    } catch (_) {}
   }
 
   /// Initialize local notifications
@@ -173,9 +209,7 @@ class FCMService {
     
   }
 
-  /// Show notification when app is in foreground
   Future<void> _showForegroundNotification(RemoteMessage message) async {
-    
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
           'passenger_notifications',
@@ -201,11 +235,9 @@ class FCMService {
       iOS: iosDetails,
     );
     
-    // Create payload for navigation
-    String payload = '';
-    if (message.data.containsKey('bookingId')) {
-      payload = 'booking|${message.data['bookingId']}';
-    }
+    final payload = message.data.containsKey('bookingId')
+        ? 'booking|${message.data['bookingId']}'
+        : '';
     
     await _localNotifications.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
@@ -216,50 +248,15 @@ class FCMService {
     );
   }
 
-  /// Handle message when app is opened from notification
   void _handleMessageOpenedApp(RemoteMessage message) {
-    
-    // Navigate to appropriate screen based on message type
-    final messageType = message.data['type'];
-    switch (messageType) {
-      case 'booking_cancellation':
-        // Navigate to booking history or home
-        break;
-      case 'driver_approaching':
-      case 'driver_arrived':
-      case 'trip_started':
-        // Navigate to active trip screen
-        break;
-      case 'trip_completed':
-        // Navigate to trip completion screen
-        break;
-    }
+    // TODO: Implement navigation based on message.data['type']
   }
 
-  /// Handle booking cancellation notification
-  void _handleBookingCancellation(RemoteMessage message) {
-    // Handle booking cancellation logic
-  }
-
-  /// Handle driver approaching notification
-  void _handleDriverApproaching(RemoteMessage message) {
-    // Handle driver approaching logic
-  }
-
-  /// Handle driver arrived notification
-  void _handleDriverArrived(RemoteMessage message) {
-    // Handle driver arrived logic
-  }
-
-  /// Handle trip started notification
-  void _handleTripStarted(RemoteMessage message) {
-    // Handle trip started logic
-  }
-
-  /// Handle trip completed notification
-  void _handleTripCompleted(RemoteMessage message) {
-    // Handle trip completed logic
-  }
+  void _handleBookingCancellation(RemoteMessage message) {}
+  void _handleDriverApproaching(RemoteMessage message) {}
+  void _handleDriverArrived(RemoteMessage message) {}
+  void _handleTripStarted(RemoteMessage message) {}
+  void _handleTripCompleted(RemoteMessage message) {}
 
   /// Store FCM token for current user (call this after login)
   Future<void> storeFCMTokenForCurrentUser() async {
@@ -341,49 +338,50 @@ class FCMService {
 
   /// Create notification channel for Android
   Future<void> _createNotificationChannel() async {
-    if (Platform.isAndroid) {
-      try {
-        const AndroidNotificationChannel channel = AndroidNotificationChannel(
-          'passenger_notifications',
-          'Passenger Notifications',
-          description: 'Notifications for passenger app',
-          importance: Importance.max,
-          playSound: true,
-          enableVibration: true,
-          enableLights: true,
-          showBadge: true,
-        );
+    if (!Platform.isAndroid) return;
+    
+    try {
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'passenger_notifications',
+        'Passenger Notifications',
+        description: 'Notifications for passenger app',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        enableLights: true,
+        showBadge: true,
+      );
 
-        await _localNotifications
-            .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin
-            >()
-            ?.createNotificationChannel(channel);
-      } catch (e) {
-        // Silent error handling
-      }
-    }
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+    } catch (_) {}
   }
 
-  /// Handle local notification tap
   void _onNotificationTapped(NotificationResponse response) {
-    // Handle navigation based on notification payload
-    if (response.payload != null) {
-      try {
-        final data = response.payload!.split('|');
-        if (data.length >= 2 && data[0] == 'booking') {
-          // TODO: Navigate to booking details
-          // Navigate to booking details
-        }
-      } catch (e) {
-        // Silent error handling
+    if (response.payload == null) return;
+    
+    try {
+      final data = response.payload!.split('|');
+      if (data.length >= 2 && data[0] == 'booking') {
+        // TODO: Navigate to booking details
       }
-    }
+    } catch (_) {}
   }
 }
 
-/// Background message handler (must be top-level function)
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Handle background message
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    await NotificationService().storeNotification(
+      userId: user.uid,
+      title: message.notification?.title ?? 'Notification',
+      body: message.notification?.body ?? 'You have a new notification',
+      type: message.data['type'] ?? 'general',
+      data: message.data,
+    );
+  } catch (_) {}
 }
