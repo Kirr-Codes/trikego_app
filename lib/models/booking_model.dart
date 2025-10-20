@@ -8,6 +8,7 @@ enum BookingStatus {
   accepted,
   driverEnRoute,
   arrived,
+  pickedUp,  // When driver picks up passenger (matches 'picked_up' in Firestore)
   inProgress,
   completed,
   cancelled,
@@ -74,10 +75,9 @@ class DriverLocation {
   }
 }
 
-/// Route information for booking
 class BookingRoute {
-  final int distance; // in meters
-  final int duration; // in seconds
+  final int distance;
+  final int duration;
   final String distanceText;
   final String durationText;
   final List<LatLng> points;
@@ -129,11 +129,11 @@ class BookingRoute {
   }
 }
 
-/// Fare breakdown for booking
 class BookingFare {
   final double baseFare;
   final double distanceFare;
   final double passengerFare;
+  final double timeMultiplier;
   final double totalFare;
   final String currency;
 
@@ -141,6 +141,7 @@ class BookingFare {
     required this.baseFare,
     required this.distanceFare,
     required this.passengerFare,
+    this.timeMultiplier = 1.0,
     required this.totalFare,
     this.currency = 'PHP',
   });
@@ -150,6 +151,7 @@ class BookingFare {
       baseFare: map['baseFare']?.toDouble() ?? 0.0,
       distanceFare: map['distanceFare']?.toDouble() ?? 0.0,
       passengerFare: map['passengerFare']?.toDouble() ?? 0.0,
+      timeMultiplier: map['timeMultiplier']?.toDouble() ?? 1.0,
       totalFare: map['totalFare']?.toDouble() ?? 0.0,
       currency: map['currency'] ?? 'PHP',
     );
@@ -160,6 +162,7 @@ class BookingFare {
       'baseFare': baseFare,
       'distanceFare': distanceFare,
       'passengerFare': passengerFare,
+      'timeMultiplier': timeMultiplier,
       'totalFare': totalFare,
       'currency': currency,
     };
@@ -168,7 +171,6 @@ class BookingFare {
   String get formattedTotal => '₱${totalFare.toStringAsFixed(2)}';
 }
 
-/// Main booking model
 class Booking {
   final String id;
   final String passengerId;
@@ -188,6 +190,7 @@ class Booking {
   final DateTime? startedAt;
   final DateTime? completedAt;
   final String paymentMethod; // 'cash' or 'digital'
+  final String? cancelledBy; // 'passenger' or 'driver'
 
   const Booking({
     required this.id,
@@ -202,15 +205,33 @@ class Booking {
     required this.status,
     this.driverId,
     this.driver,
-    this.driverLocation, // NEW
+    this.driverLocation,
     required this.createdAt,
     this.acceptedAt,
     this.startedAt,
     this.completedAt,
     this.paymentMethod = 'cash',
+    this.cancelledBy,
   });
 
-  /// Create booking from Firestore document
+  static BookingStatus _parseBookingStatus(String? status) {
+    if (status == null) return BookingStatus.pending;
+    
+    switch (status) {
+      case 'picked_up':
+        return BookingStatus.pickedUp;
+      case 'driver_en_route':
+        return BookingStatus.driverEnRoute;
+      case 'in_progress':
+        return BookingStatus.inProgress;
+      default:
+        return BookingStatus.values.firstWhere(
+          (s) => s.name == status,
+          orElse: () => BookingStatus.pending,
+        );
+    }
+  }
+
   factory Booking.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
 
@@ -224,15 +245,12 @@ class Booking {
       route: BookingRoute.fromMap(data['route'] ?? {}),
       fare: BookingFare.fromMap(data['fare'] ?? {}),
       passengerCount: data['passengerCount'] ?? 1,
-      status: BookingStatus.values.firstWhere(
-        (status) => status.name == data['status'],
-        orElse: () => BookingStatus.pending,
-      ),
+      status: _parseBookingStatus(data['status']),
       driverId: data['driverId'],
-      driver: null, // Driver info will be fetched separately when needed
+      driver: null,
       driverLocation: data['driverLocation'] != null
           ? DriverLocation.fromMap(data['driverLocation'])
-          : null, // NEW
+          : null,
       createdAt: (data['createdAt'] as Timestamp).toDate(),
       acceptedAt: data['acceptedAt'] != null
           ? (data['acceptedAt'] as Timestamp).toDate()
@@ -244,6 +262,7 @@ class Booking {
           ? (data['completedAt'] as Timestamp).toDate()
           : null,
       paymentMethod: data['paymentMethod'] ?? 'cash',
+      cancelledBy: data['cancelledBy'],
     );
   }
 
@@ -268,6 +287,7 @@ class Booking {
           ? Timestamp.fromDate(completedAt!)
           : null,
       'paymentMethod': paymentMethod,
+      'cancelledBy': cancelledBy,
     };
   }
 
@@ -291,6 +311,7 @@ class Booking {
     DateTime? startedAt,
     DateTime? completedAt,
     String? paymentMethod,
+    String? cancelledBy,
   }) {
     return Booking(
       id: id ?? this.id,
@@ -305,16 +326,16 @@ class Booking {
       status: status ?? this.status,
       driverId: driverId ?? this.driverId,
       driver: driver ?? this.driver,
-      driverLocation: driverLocation ?? this.driverLocation, // NEW
+      driverLocation: driverLocation ?? this.driverLocation,
       createdAt: createdAt ?? this.createdAt,
       acceptedAt: acceptedAt ?? this.acceptedAt,
       startedAt: startedAt ?? this.startedAt,
       completedAt: completedAt ?? this.completedAt,
       paymentMethod: paymentMethod ?? this.paymentMethod,
+      cancelledBy: cancelledBy ?? this.cancelledBy,
     );
   }
 
-  /// Get formatted status text
   String get statusText {
     switch (status) {
       case BookingStatus.pending:
@@ -325,6 +346,8 @@ class Booking {
         return 'Driver on the way';
       case BookingStatus.arrived:
         return 'Driver arrived';
+      case BookingStatus.pickedUp:
+        return 'Passenger picked up';
       case BookingStatus.inProgress:
         return 'Ride in progress';
       case BookingStatus.completed:
@@ -336,14 +359,12 @@ class Booking {
     }
   }
 
-  /// Check if booking is active (not completed or cancelled)
   bool get isActive {
     return status != BookingStatus.completed &&
         status != BookingStatus.cancelled &&
         status != BookingStatus.expired;
   }
 
-  /// Get estimated arrival time
   DateTime? get estimatedArrival {
     if (acceptedAt != null) {
       return acceptedAt!.add(Duration(seconds: route.duration));

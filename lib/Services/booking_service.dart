@@ -65,6 +65,17 @@ class BookingService {
       StreamController<Booking?>.broadcast();
   final StreamController<List<Booking>> _bookingHistoryController = 
       StreamController<List<Booking>>.broadcast();
+  
+  // Throttling for location updates
+  Timer? _locationThrottleTimer;
+  Booking? _pendingBookingUpdate;
+  DateTime? _lastLocationUpdate;
+  
+  // Throttle interval for UI updates (60 seconds)
+  static const Duration _locationThrottleInterval = Duration(seconds: 60);
+  
+  // Firestore snapshot subscription
+  StreamSubscription<DocumentSnapshot>? _bookingSubscription;
 
   /// Stream of active booking updates
   Stream<Booking?> get activeBookingStream => _activeBookingController.stream;
@@ -75,6 +86,47 @@ class BookingService {
   /// Current active booking
   Booking? _activeBooking;
   Booking? get activeBooking => _activeBooking;
+
+  /// Initialize and check for existing active bookings
+  Future<void> initialize() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final snapshot = await _firestore
+          .collection(_bookingsCollection)
+          .where('passengerId', isEqualTo: user.uid)
+          .where('status', whereIn: [
+            'pending',
+            'accepted',
+            'driver_arriving',
+            'driver_arrived',
+            'in_progress',
+          ])
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        final booking = Booking.fromFirestore(snapshot.docs.first);
+        
+        if (booking.driverId != null && booking.driver == null) {
+          final driver = await _driverService.getDriverById(booking.driverId!);
+          if (driver != null) {
+            final updatedBooking = booking.copyWith(driver: driver);
+            _activeBooking = updatedBooking;
+            _activeBookingController.add(updatedBooking);
+            _listenToBookingUpdates(updatedBooking.id);
+            return;
+          }
+        }
+        
+        _activeBooking = booking;
+        _activeBookingController.add(booking);
+        _listenToBookingUpdates(booking.id);
+      }
+    } catch (e) {}
+  }
 
   /// Create a new booking
   Future<BookingServiceResult> createBooking({
@@ -131,6 +183,7 @@ class BookingService {
         baseFare: fareCalculation.baseFare,
         distanceFare: fareCalculation.driverToPickupFare + fareCalculation.pickupToDestinationFare,
         passengerFare: fareCalculation.passengerFare,
+        timeMultiplier: fareCalculation.timeMultiplier,
         totalFare: fareCalculation.totalFare,
       );
 
@@ -203,6 +256,7 @@ class BookingService {
           .doc(_activeBooking!.id)
           .update({
         'status': BookingStatus.cancelled.name,
+        'cancelledBy': 'passenger',
       });
 
       return BookingServiceResult.success(
@@ -284,9 +338,14 @@ class BookingService {
     }
   }
 
-  /// Listen to booking updates
+  /// Listen to booking updates with real-time snapshots and throttled location updates
   void _listenToBookingUpdates(String bookingId) {
-    _firestore
+    // Cancel any existing subscription and timer
+    _bookingSubscription?.cancel();
+    _locationThrottleTimer?.cancel();
+    
+    // Set up real-time Firestore snapshot listener
+    _bookingSubscription = _firestore
         .collection(_bookingsCollection)
         .doc(bookingId)
         .snapshots()
@@ -294,29 +353,96 @@ class BookingService {
       if (snapshot.exists) {
         var booking = Booking.fromFirestore(snapshot);
         
-        // If booking is accepted and has a driver ID, fetch driver information
-        if (booking.status == BookingStatus.accepted && 
-            booking.driverId != null && 
-            booking.driver == null) {
+        // Fetch driver info if needed
+        if (booking.driverId != null && 
+            booking.driver == null &&
+            (booking.status == BookingStatus.accepted ||
+             booking.status == BookingStatus.driverEnRoute ||
+             booking.status == BookingStatus.arrived ||
+             booking.status == BookingStatus.pickedUp ||
+             booking.status == BookingStatus.inProgress)) {
           final driver = await _driverService.getDriverById(booking.driverId!);
           if (driver != null) {
             booking = booking.copyWith(driver: driver);
           }
         }
         
-        // Driver location updates are already included in the booking document
-        // No need for separate listener since we're already listening to the booking
-        
-        _activeBooking = booking;
-        _activeBookingController.add(booking);
+        // Handle different types of updates
+        _handleBookingUpdate(booking);
 
-        // If booking is completed or cancelled, clear active booking
+        // Clean up if booking is no longer active
         if (!booking.isActive) {
           _activeBooking = null;
           _activeBookingController.add(null);
+          _bookingSubscription?.cancel();
+          _locationThrottleTimer?.cancel();
+          _lastLocationUpdate = null;
+          _pendingBookingUpdate = null;
         }
       }
     });
+  }
+  
+  /// Handle booking updates with smart throttling
+  void _handleBookingUpdate(Booking booking) {
+    final previousBooking = _activeBooking;
+    
+    // Check if this is a status change (always update immediately)
+    final isStatusChange = previousBooking == null || 
+                          previousBooking.status != booking.status;
+    
+    // Check if this is only a location update
+    final isLocationUpdate = previousBooking != null &&
+                            previousBooking.status == booking.status &&
+                            previousBooking.driverLocation != booking.driverLocation;
+    
+    if (isStatusChange) {
+      // Status changes are always immediate (accepted, arrived, picked up, etc.)
+      _activeBooking = booking;
+      _activeBookingController.add(booking);
+      _lastLocationUpdate = DateTime.now();
+    } else if (isLocationUpdate) {
+      // Location updates are throttled
+      _handleThrottledLocationUpdate(booking);
+    } else {
+      // Other updates (no change or first update)
+      _activeBooking = booking;
+      _activeBookingController.add(booking);
+    }
+  }
+  
+  /// Handle throttled location updates
+  void _handleThrottledLocationUpdate(Booking booking) {
+    final now = DateTime.now();
+    final timeSinceLastUpdate = _lastLocationUpdate != null
+        ? now.difference(_lastLocationUpdate!)
+        : Duration.zero;
+    
+    if (timeSinceLastUpdate >= _locationThrottleInterval) {
+      // Enough time has passed, update immediately
+      _activeBooking = booking;
+      _activeBookingController.add(booking);
+      _lastLocationUpdate = now;
+      _pendingBookingUpdate = null;
+      _locationThrottleTimer?.cancel();
+    } else {
+      // Store pending update and schedule it
+      _pendingBookingUpdate = booking;
+      
+      // Cancel existing timer if any
+      _locationThrottleTimer?.cancel();
+      
+      // Schedule update for when throttle period expires
+      final remainingTime = _locationThrottleInterval - timeSinceLastUpdate;
+      _locationThrottleTimer = Timer(remainingTime, () {
+        if (_pendingBookingUpdate != null) {
+          _activeBooking = _pendingBookingUpdate;
+          _activeBookingController.add(_pendingBookingUpdate!);
+          _lastLocationUpdate = DateTime.now();
+          _pendingBookingUpdate = null;
+        }
+      });
+    }
   }
 
 
@@ -395,6 +521,8 @@ class BookingService {
 
   /// Dispose resources
   void dispose() {
+    _bookingSubscription?.cancel();
+    _locationThrottleTimer?.cancel();
     _activeBookingController.close();
     _bookingHistoryController.close();
   }

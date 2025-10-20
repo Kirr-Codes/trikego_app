@@ -16,6 +16,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'screens/homepage.dart';
 import 'screens/history_screen.dart';
 import 'screens/payment_method_screen.dart';
+import 'screens/notifications_screen.dart';
 import 'widgets/auth_wrapper.dart';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -114,6 +115,7 @@ class MyApp extends StatelessWidget {
         },
         '/homepage': (context) => const HomePage(),
         '/history': (context) => const HistoryScreen(),
+        '/notifications': (context) => const NotificationsScreen(),
         '/edit_profile': (context) => const EditProfilePage(),
         '/settings': (context) => const SettingsScreen(),
         '/payment_method': (context) => const PaymentMethodScreen(),
