@@ -29,6 +29,7 @@ class SearchPanelWidget extends StatelessWidget {
   final Future<void> Function() onCashPayment;
   final VoidCallback onConfirm;
   final VoidCallback? onCancelBooking;
+  final String? selectedPaymentMethod;
 
   const SearchPanelWidget({
     super.key,
@@ -51,6 +52,7 @@ class SearchPanelWidget extends StatelessWidget {
     required this.onCashPayment,
     required this.onConfirm,
     this.onCancelBooking,
+    this.selectedPaymentMethod,
   });
 
   @override
@@ -181,6 +183,7 @@ class SearchPanelWidget extends StatelessWidget {
               onIncreasePassengers: onIncreasePassengers,
               onCashPayment: onCashPayment,
               onConfirm: onConfirm,
+              selectedPaymentMethod: selectedPaymentMethod,
             ),
           ] else if (selectedDestination != null) ...[
             // Clear and Next buttons when destination is selected

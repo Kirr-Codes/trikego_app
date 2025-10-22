@@ -15,6 +15,7 @@ class BookingInformationWidget extends StatelessWidget {
   final Future<void> Function() onCashPayment;
   final VoidCallback onConfirm;
   final EnhancedFareCalculation? fareCalculation;
+  final String? selectedPaymentMethod;
 
   const BookingInformationWidget({
     super.key,
@@ -28,6 +29,7 @@ class BookingInformationWidget extends StatelessWidget {
     required this.onCashPayment,
     required this.onConfirm,
     this.fareCalculation,
+    this.selectedPaymentMethod,
   });
 
   @override
@@ -127,7 +129,7 @@ class BookingInformationWidget extends StatelessWidget {
 
         // Ride Summary Card
         Container(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.grey.shade50,
             borderRadius: BorderRadius.circular(8),
@@ -146,16 +148,16 @@ class BookingInformationWidget extends StatelessWidget {
                         const Text(
                           'Distance',
                           style: TextStyle(
-                            fontSize: 9,
+                            fontSize: 10,
                             color: Colors.grey,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 4),
                         Text(
                           route.distanceText,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: AppColors.primary,
                           ),
@@ -170,16 +172,16 @@ class BookingInformationWidget extends StatelessWidget {
                         const Text(
                           'Est. Time',
                           style: TextStyle(
-                            fontSize: 9,
+                            fontSize: 10,
                             color: Colors.grey,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 4),
                         Text(
                           route.durationText,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: AppColors.primary,
                           ),
@@ -194,20 +196,20 @@ class BookingInformationWidget extends StatelessWidget {
                         const Text(
                           'Passengers',
                           style: TextStyle(
-                            fontSize: 9,
+                            fontSize: 10,
                             color: Colors.grey,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 4),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             GestureDetector(
                               onTap: onDecreasePassengers,
                               child: Container(
-                                width: 20,
-                                height: 20,
+                                width: 24,
+                                height: 24,
                                 decoration: BoxDecoration(
                                   color: AppColors.primary,
                                   shape: BoxShape.circle,
@@ -215,25 +217,25 @@ class BookingInformationWidget extends StatelessWidget {
                                 child: const Icon(
                                   Icons.remove,
                                   color: Colors.white,
-                                  size: 12,
+                                  size: 14,
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 10),
                             Text(
                               '$passengerCount',
                               style: const TextStyle(
-                                fontSize: 12,
+                                fontSize: 14,
                                 fontWeight: FontWeight.w700,
                                 color: Colors.black,
                               ),
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 10),
                             GestureDetector(
                               onTap: onIncreasePassengers,
                               child: Container(
-                                width: 20,
-                                height: 20,
+                                width: 24,
+                                height: 24,
                                 decoration: BoxDecoration(
                                   color: AppColors.primary,
                                   shape: BoxShape.circle,
@@ -241,7 +243,7 @@ class BookingInformationWidget extends StatelessWidget {
                                 child: const Icon(
                                   Icons.add,
                                   color: Colors.white,
-                                  size: 12,
+                                  size: 14,
                                 ),
                               ),
                             ),
@@ -319,8 +321,12 @@ class BookingInformationWidget extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: () => onCashPayment(),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.grey.shade200,
-                  foregroundColor: Colors.black,
+                  backgroundColor: selectedPaymentMethod != null 
+                      ? AppColors.primary.withOpacity(0.1)
+                      : Colors.grey.shade200,
+                  foregroundColor: selectedPaymentMethod != null 
+                      ? AppColors.primary
+                      : Colors.black,
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -331,14 +337,24 @@ class BookingInformationWidget extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      Icons.account_balance_wallet,
-                      color: Colors.grey.shade600,
+                      selectedPaymentMethod == 'cash' 
+                          ? Icons.money
+                          : selectedPaymentMethod == 'online'
+                              ? Icons.account_balance_wallet
+                              : Icons.account_balance_wallet,
+                      color: selectedPaymentMethod != null 
+                          ? AppColors.primary
+                          : Colors.grey.shade600,
                       size: 14,
                     ),
                     const SizedBox(width: 4),
-                    const Text(
-                      'Payment',
-                      style: TextStyle(
+                    Text(
+                      selectedPaymentMethod == 'cash'
+                          ? 'Cash'
+                          : selectedPaymentMethod == 'online'
+                              ? 'Online Payment'
+                              : 'Payment',
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),

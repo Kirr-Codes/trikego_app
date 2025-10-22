@@ -149,11 +149,11 @@ class _SignInPageState extends State<SignInPage> {
           // User cancelled, don't show any message and don't navigate
           return;
         }
-        
+
         // Handle specific error cases
         if (result.errorCode == 'ACCOUNT_NOT_REGISTERED') {
           context.showError(
-            'Gmail account not registered. Please complete registration first.',
+            'Gmail account not registered. Please make sure the email is linked to an account.',
           );
         } else if (result.errorCode == 'ACCOUNT_NOT_LINKED') {
           context.showError(
@@ -430,7 +430,8 @@ class _SignInPageState extends State<SignInPage> {
                   fontWeight: FontWeight.w700,
                 ),
                 recognizer: TapGestureRecognizer()
-                  ..onTap = () => Navigator.of(context).pushNamed('/signup'),
+                  ..onTap = () =>
+                      Navigator.of(context).pushReplacementNamed('/signup'),
               ),
             ],
           ),

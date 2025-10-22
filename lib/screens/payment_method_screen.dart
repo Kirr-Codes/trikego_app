@@ -54,11 +54,11 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
             const SizedBox(height: 12),
             _buildPaymentOption(
               icon: Icons.account_balance_wallet_outlined,
-              title: 'GCash Payment',
+              title: 'Online Payment',
               subtitle: 'Pay through the QR code of drivers',
-              value: 'digital',
-              isSelected: _selectedPaymentMethod == 'digital',
-              onTap: () => _selectPaymentMethod('digital'),
+              value: 'online',
+              isSelected: _selectedPaymentMethod == 'online',
+              onTap: () => _selectPaymentMethod('online'),
             ),
             
             const Spacer(),

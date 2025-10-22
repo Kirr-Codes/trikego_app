@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../main.dart' show AppColors;
 import 'account_settings_screen.dart';
 import 'privacy_policy_screen.dart';
-import 'contact_us_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -16,10 +15,7 @@ class SettingsScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back,
-            color: Colors.black,
-          ),
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -48,12 +44,6 @@ class SettingsScreen extends StatelessWidget {
               'Privacy Policy',
               () => _navigateToPrivacyPolicy(context),
             ),
-            const SizedBox(height: 16),
-            _buildSettingsOption(
-              context,
-              'Contact Us',
-              () => _navigateToContactUs(context),
-            ),
           ],
         ),
       ),
@@ -70,10 +60,7 @@ class SettingsScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.primary,
-          width: 1,
-        ),
+        border: Border.all(color: AppColors.primary, width: 1),
       ),
       child: ListTile(
         title: Text(
@@ -97,25 +84,14 @@ class SettingsScreen extends StatelessWidget {
   void _navigateToAccount(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const AccountSettingsScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const AccountSettingsScreen()),
     );
   }
 
   void _navigateToPrivacyPolicy(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const PrivacyPolicyScreen(),
-      ),
-    );
-  }
-
-  void _navigateToContactUs(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const ContactUsScreen()),
+      MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()),
     );
   }
 }

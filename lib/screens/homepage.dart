@@ -55,6 +55,7 @@ class _HomePageState extends State<HomePage> {
 
   bool _showBookingInformation = false;
   int _passengerCount = 1;
+  String? _selectedPaymentMethod;
   EnhancedFareCalculation? _currentFareCalculation;
   Booking? _activeBooking;
   StreamSubscription<Booking?>? _bookingSubscription;
@@ -635,6 +636,7 @@ class _HomePageState extends State<HomePage> {
       _destinationMarkers = {};
       _showBookingInformation = false;
       _passengerCount = 1;
+      _selectedPaymentMethod = null;
     });
   }
 
@@ -756,6 +758,10 @@ class _HomePageState extends State<HomePage> {
   Future<void> _cancelBooking() async {
     if (_activeBooking == null) return;
 
+    // Show confirmation dialog
+    final confirmed = await _showCancelConfirmationDialog();
+    if (!confirmed) return;
+
     final result = await _bookingService.cancelBooking();
     if (result.success) {
       if (mounted) {
@@ -764,6 +770,7 @@ class _HomePageState extends State<HomePage> {
           _showBookingInformation = false;
           _selectedDestination = null;
           _currentRoute = null;
+          _selectedPaymentMethod = null;
           // Clear driver markers and routes
           _driverMarkers.clear();
           _driverRoutePolylines.clear();
@@ -774,6 +781,79 @@ class _HomePageState extends State<HomePage> {
         context.showError(result.message);
       }
     }
+  }
+
+  /// Show cancel booking confirmation dialog
+  Future<bool> _showCancelConfirmationDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(
+              Icons.cancel_outlined,
+              color: Colors.red.shade600,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Cancel Booking',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to cancel this booking? This action cannot be undone.',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey,
+          ),
+        ),
+        actions: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(
+                  'Keep Booking',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade600,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'Yes, Cancel',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   /// Build map markers
@@ -939,15 +1019,12 @@ class _HomePageState extends State<HomePage> {
                   );
 
                   if (selectedPaymentMethod != null && mounted) {
-                    // Show success message with selected payment method
-                    final paymentMethodName = selectedPaymentMethod == 'cash'
-                        ? 'Cash'
-                        : 'GCash';
-                    context.showSuccess(
-                      'Payment method set to $paymentMethodName',
-                    );
+                    setState(() {
+                      _selectedPaymentMethod = selectedPaymentMethod;
+                    });
                   }
                 },
+                selectedPaymentMethod: _selectedPaymentMethod,
                 onConfirm: _confirmBooking,
                 onCancelBooking: _cancelBooking,
               ),

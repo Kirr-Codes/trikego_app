@@ -281,67 +281,148 @@ class _ProfileDrawerState extends State<ProfileDrawer> {
   void _showAboutDialog(BuildContext context) {
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (BuildContext context) {
-        return AlertDialog(
+        return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
           ),
-          title: Row(
-            children: [
-              Icon(Icons.info_outline, color: AppColors.primary, size: 28),
-              const SizedBox(width: 12),
-              Text(
-                'About TrikeGO',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 20,
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'TrikeGO - Your reliable tricycle booking app',
-                style: GoogleFonts.inter(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Version: 1.0.0\n'
-                'Built with Flutter\n\n'
-                'Connect with tricycle drivers in your area for quick and affordable transportation.',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: Colors.black87,
-                  height: 1.5,
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: Text(
-                'OK',
-                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-              ),
+          elevation: 8,
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.5,
+              maxWidth: 450,
             ),
-          ],
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 12, 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'About TrikeGO',
+                          style: GoogleFonts.inter(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close, color: Colors.grey.shade600, size: 20),
+                        onPressed: () => Navigator.pop(context),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        splashRadius: 18,
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, color: Colors.grey.shade200),
+                // Content
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Your Trusted Tricycle Booking Platform',
+                          style: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'TrikeGO is a modern transportation solution designed to connect passengers with registered PB TODA tricycle drivers in Paombong, Bulacan. Our mission is to provide safe, reliable, and affordable transportation while supporting local drivers and their communities.',
+                          style: GoogleFonts.inter(
+                            fontSize: 12.5,
+                            color: Colors.grey.shade700,
+                            height: 1.5,
+                            letterSpacing: -0.1,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildAboutSection(
+                          'Our Vision',
+                          'To revolutionize local transportation by making tricycle rides more accessible, efficient, and convenient for everyone.',
+                        ),
+                        const SizedBox(height: 16),
+                        _buildAboutSection(
+                          'Key Features',
+                          '• Real-time driver tracking\n'
+                          '• Transparent fare calculation\n'
+                          '• Secure booking system\n'
+                          '• In-app notifications\n'
+                          '• Ride history tracking',
+                        ),
+                        const SizedBox(height: 16),
+                        _buildAboutSection(
+                          'Our Commitment',
+                          'We are committed to ensuring passenger safety, driver welfare, and community development. All our drivers are verified members of PB TODA, ensuring quality service and accountability.',
+                        ),
+                        const SizedBox(height: 16),
+                        Divider(color: Colors.grey.shade300, height: 1),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Version 1.0.0',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '© 2024 TrikeGO - PB TODA',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
+    );
+  }
+
+  Widget _buildAboutSection(String title, String content) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+            letterSpacing: -0.2,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          content,
+          style: GoogleFonts.inter(
+            fontSize: 12.5,
+            color: Colors.grey.shade700,
+            height: 1.5,
+            letterSpacing: -0.1,
+          ),
+        ),
+      ],
     );
   }
 }

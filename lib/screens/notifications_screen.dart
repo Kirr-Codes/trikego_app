@@ -43,17 +43,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         stream: _notificationService.notificationsStream,
         initialData: _notificationService.currentNotifications,
         builder: (context, snapshot) {
-          
           if (snapshot.hasError) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
-                    Icons.error_outline,
-                    size: 64,
-                    color: Colors.red,
-                  ),
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
                   const SizedBox(height: 16),
                   Text(
                     'Error loading notifications',
@@ -79,16 +74,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   const SizedBox(height: 16),
                   Text(
                     'No notifications yet',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.grey[600],
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleLarge?.copyWith(color: Colors.grey[600]),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'You\'ll see updates about your bookings here',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[500],
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: Colors.grey[500]),
                   ),
                 ],
               ),
@@ -116,23 +111,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     // Mark as read
     if (!notification.isRead) {
       _notificationService.markAsRead(notification.id);
-    }
-
-    // Navigate based on notification type
-    switch (notification.type) {
-      case 'booking_accepted':
-      case 'driver_approaching':
-      case 'driver_arrived':
-      case 'trip_started':
-        // Navigate to home page (active booking)
-        Navigator.pop(context);
-        break;
-      case 'trip_completed':
-        // Navigate to history
-        Navigator.pushReplacementNamed(context, '/history');
-        break;
-      default:
-        break;
     }
   }
 
@@ -165,18 +143,14 @@ class _NotificationTile extends StatelessWidget {
         ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 24),
-        child: const Icon(
-          Icons.delete_outline,
-          color: Colors.white,
-          size: 24,
-        ),
+        child: const Icon(Icons.delete_outline, color: Colors.white, size: 24),
       ),
       onDismissed: (direction) => onDelete(),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
-          color: notification.isRead 
-              ? Colors.white 
+          color: notification.isRead
+              ? Colors.white
               : AppColors.primary.withOpacity(0.06),
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
@@ -204,7 +178,10 @@ class _NotificationTile extends StatelessWidget {
                     decoration: BoxDecoration(
                       gradient: notification.isRead
                           ? LinearGradient(
-                              colors: [Colors.grey.shade200, Colors.grey.shade300],
+                              colors: [
+                                Colors.grey.shade200,
+                                Colors.grey.shade300,
+                              ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             )
@@ -220,8 +197,8 @@ class _NotificationTile extends StatelessWidget {
                     ),
                     child: Icon(
                       _getIconData(notification.iconType),
-                      color: notification.isRead 
-                          ? Colors.grey.shade700 
+                      color: notification.isRead
+                          ? Colors.grey.shade700
                           : AppColors.primary,
                       size: 22,
                     ),
@@ -238,8 +215,8 @@ class _NotificationTile extends StatelessWidget {
                               child: Text(
                                 notification.title,
                                 style: TextStyle(
-                                  fontWeight: notification.isRead 
-                                      ? FontWeight.w600 
+                                  fontWeight: notification.isRead
+                                      ? FontWeight.w600
                                       : FontWeight.w700,
                                   color: Colors.black87,
                                   fontSize: 14.5,
