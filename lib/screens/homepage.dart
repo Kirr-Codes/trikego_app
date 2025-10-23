@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../Services/location_service.dart';
 import '../Services/address_service.dart';
@@ -10,12 +11,14 @@ import '../Services/places_service.dart';
 import '../Services/route_service.dart';
 import '../Services/booking_service.dart';
 import '../Services/notification_service.dart';
+import '../Services/connectivity_service.dart';
 import '../models/fare_config_model.dart';
 import '../models/booking_model.dart';
 import '../widgets/profile_drawer.dart';
 import '../widgets/circle_icon_button_widget.dart';
 import '../widgets/search_panel_widget.dart';
 import '../widgets/driver_cancelled_dialog.dart';
+import '../widgets/connectivity_banner_widget.dart';
 import '../utils/snackbar_utils.dart';
 import '../utils/dialog_utils.dart';
 import '../main.dart' show AppColors;
@@ -36,6 +39,7 @@ class _HomePageState extends State<HomePage> {
   final AddressService _addressService = AddressService();
   final BookingService _bookingService = BookingService();
   final NotificationService _notificationService = NotificationService();
+  final ConnectivityService _connectivityService = ConnectivityService();
   GoogleMapController? _mapController;
 
   LatLng? _currentPosition;
@@ -43,6 +47,8 @@ class _HomePageState extends State<HomePage> {
   String _currentAddress = 'Getting your location...';
   StreamSubscription<LatLng>? _locationSubscription;
   StreamSubscription<LocationState>? _stateSubscription;
+  StreamSubscription<bool>? _connectivitySubscription;
+  bool _isConnected = true;
 
   PlaceSearchResult? _selectedDestination;
   RouteResult? _currentRoute;
@@ -59,6 +65,7 @@ class _HomePageState extends State<HomePage> {
   EnhancedFareCalculation? _currentFareCalculation;
   Booking? _activeBooking;
   StreamSubscription<Booking?>? _bookingSubscription;
+  bool _isCreatingBooking = false;
 
   Set<Polyline> _driverRoutePolylines = {};
   Set<Marker> _driverMarkers = {};
@@ -76,6 +83,7 @@ class _HomePageState extends State<HomePage> {
     _loadDriverMarker();
     _initializeLocation();
     _initializeBookingService();
+    _initializeConnectivity();
     _notificationService.initialize();
   }
 
@@ -84,6 +92,7 @@ class _HomePageState extends State<HomePage> {
     _locationSubscription?.cancel();
     _stateSubscription?.cancel();
     _bookingSubscription?.cancel();
+    _connectivitySubscription?.cancel();
     _locationService.stopTracking();
     super.dispose();
   }
@@ -106,6 +115,18 @@ class _HomePageState extends State<HomePage> {
         _driverIcon = BitmapDescriptor.bytes(resizedBytes);
       });
     } catch (e) {}
+  }
+
+  void _initializeConnectivity() {
+    _connectivityService.initialize();
+    _connectivitySubscription = _connectivityService.connectivityStream.listen((isConnected) {
+      if (mounted) {
+        setState(() {
+          _isConnected = isConnected;
+        });
+        
+      }
+    });
   }
 
   void _initializeBookingService() {
@@ -490,6 +511,20 @@ class _HomePageState extends State<HomePage> {
 
   /// Open destination search screen
   Future<void> _openDestinationSearch() async {
+    // Check if location services are enabled
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      if (mounted) {
+        DialogUtils.showLocationDialog(
+          context,
+          title: 'Location Access Required',
+          message: 'Please enable location services to search for destinations and book rides.',
+          actionText: 'Open Settings',
+          onAction: () => _locationService.openLocationSettings(),
+        );
+      }
+      return;
+    }
+
     if (_currentPosition == null) {
       context.showError('Please wait for your location to be detected.');
       return;
@@ -697,6 +732,34 @@ class _HomePageState extends State<HomePage> {
 
   /// Confirm booking
   Future<void> _confirmBooking() async {
+    // Prevent duplicate booking creation
+    if (_isCreatingBooking) {
+      return;
+    }
+
+    // Check internet connectivity
+    if (!_connectivityService.isConnected) {
+      if (mounted) {
+        context.showError('No internet connection. Please check your connection and try again.');
+      }
+      return;
+    }
+
+    // Check if location services are enabled before creating booking
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      if (mounted) {
+        context.showError('Cannot create booking. Location services are disabled.');
+        DialogUtils.showLocationDialog(
+          context,
+          title: 'Location Services Required',
+          message: 'Please enable location services to create a booking. This is required to track your ride.',
+          actionText: 'Open Settings',
+          onAction: () => _locationService.openLocationSettings(),
+        );
+      }
+      return;
+    }
+
     if (_currentPosition == null ||
         _selectedDestination == null ||
         _currentRoute == null) {
@@ -710,10 +773,26 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    // Set processing state to prevent duplicate submissions
+    setState(() {
+      _isCreatingBooking = true;
+    });
+
     // Default to cash payment if no payment method selected
     String selectedPaymentMethod = 'cash';
 
     try {
+      // Double-check connectivity before making Firestore call
+      final hasConnection = await _connectivityService.checkConnectivity();
+      if (!hasConnection) {
+        if (mounted) {
+          context.showError('Lost internet connection. Please try again.');
+          setState(() {
+            _isCreatingBooking = false;
+          });
+        }
+        return;
+      }
       // Create booking locations
       final pickupLocation = BookingLocation(
         latitude: _currentPosition!.latitude,
@@ -740,16 +819,23 @@ class _HomePageState extends State<HomePage> {
         if (mounted) {
           setState(() {
             _showBookingInformation = false;
+            _isCreatingBooking = false;
           });
         }
       } else {
         if (mounted) {
           context.showError(result.message);
+          setState(() {
+            _isCreatingBooking = false;
+          });
         }
       }
     } catch (e) {
       if (mounted) {
         context.showError('Failed to create booking. Please try again.');
+        setState(() {
+          _isCreatingBooking = false;
+        });
       }
     }
   }
@@ -985,6 +1071,23 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
 
+          // Connectivity banner at top (below menu bar)
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            child: AnimatedSlide(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              offset: _isConnected ? const Offset(0, -1) : const Offset(0, 0),
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 300),
+                opacity: _isConnected ? 0 : 1,
+                child: const ConnectivityBanner(),
+              ),
+            ),
+          ),
+
           // Bottom search panel
           Positioned(
             left: 16,
@@ -1003,6 +1106,7 @@ class _HomePageState extends State<HomePage> {
                 passengerCount: _passengerCount,
                 fareCalculation: _currentFareCalculation,
                 activeBooking: _activeBooking,
+                isProcessing: _isCreatingBooking,
                 onDestinationSearch: _openDestinationSearch,
                 onNext: _openBookingInformation,
                 onClear: _clearDestination,

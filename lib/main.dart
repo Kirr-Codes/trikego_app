@@ -3,6 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:trikego_app/Services/auth_service.dart';
 import 'package:trikego_app/Services/fcm_service.dart';
+import 'package:trikego_app/Services/connectivity_service.dart';
 import 'screens/signup_page.dart';
 import 'screens/otp_page.dart';
 import 'screens/signin_page.dart';
@@ -40,6 +41,9 @@ void main() async {
 
   // Set up background message handler
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+  // Initialize connectivity monitoring
+  await ConnectivityService().initialize();
 
   // Initialize Auth Service
   await AuthService().initialize();

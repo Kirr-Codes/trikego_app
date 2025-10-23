@@ -17,10 +17,6 @@ class AddressService {
   // Cache for addresses to avoid repeated API calls
   final Map<String, String> _addressCache = {};
 
-  /// Convert coordinates to readable address
-  ///
-  /// Returns formatted address like "123 Main St, Barangay Sample, Quezon City"
-  /// Falls back to coordinates if geocoding fails
   Future<String> getAddressFromCoordinates(LatLng coordinates) async {
     final cacheKey =
         '${coordinates.latitude.toStringAsFixed(4)},${coordinates.longitude.toStringAsFixed(4)}';

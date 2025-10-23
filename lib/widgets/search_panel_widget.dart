@@ -30,6 +30,7 @@ class SearchPanelWidget extends StatelessWidget {
   final VoidCallback onConfirm;
   final VoidCallback? onCancelBooking;
   final String? selectedPaymentMethod;
+  final bool isProcessing;
 
   const SearchPanelWidget({
     super.key,
@@ -53,6 +54,7 @@ class SearchPanelWidget extends StatelessWidget {
     required this.onConfirm,
     this.onCancelBooking,
     this.selectedPaymentMethod,
+    this.isProcessing = false,
   });
 
   @override
@@ -184,6 +186,7 @@ class SearchPanelWidget extends StatelessWidget {
               onCashPayment: onCashPayment,
               onConfirm: onConfirm,
               selectedPaymentMethod: selectedPaymentMethod,
+              isProcessing: isProcessing,
             ),
           ] else if (selectedDestination != null) ...[
             // Clear and Next buttons when destination is selected

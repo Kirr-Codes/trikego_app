@@ -16,6 +16,7 @@ class BookingInformationWidget extends StatelessWidget {
   final VoidCallback onConfirm;
   final EnhancedFareCalculation? fareCalculation;
   final String? selectedPaymentMethod;
+  final bool isProcessing;
 
   const BookingInformationWidget({
     super.key,
@@ -30,6 +31,7 @@ class BookingInformationWidget extends StatelessWidget {
     required this.onConfirm,
     this.fareCalculation,
     this.selectedPaymentMethod,
+    this.isProcessing = false,
   });
 
   @override
@@ -366,7 +368,7 @@ class BookingInformationWidget extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: ElevatedButton(
-                onPressed: onConfirm,
+                onPressed: isProcessing ? null : onConfirm,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
@@ -375,11 +377,21 @@ class BookingInformationWidget extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   elevation: 0,
+                  disabledBackgroundColor: Colors.grey.shade400,
                 ),
-                child: const Text(
-                  'Confirm',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                ),
+                child: isProcessing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        'Confirm',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
               ),
             ),
           ],
