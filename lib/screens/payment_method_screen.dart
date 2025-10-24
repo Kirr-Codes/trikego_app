@@ -22,11 +22,11 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
           style: GoogleFonts.inter(
             fontSize: 18,
             fontWeight: FontWeight.w600,
-            color: Colors.white,
+            color: Colors.black,
           ),
         ),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
         elevation: 0,
         centerTitle: true,
       ),
@@ -46,9 +46,9 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
               isSelected: _selectedPaymentMethod == 'cash',
               onTap: () => _selectPaymentMethod('cash'),
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Digital Payment Section
             _buildSectionHeader('DIGITAL PAYMENT'),
             const SizedBox(height: 12),
@@ -60,14 +60,16 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
               isSelected: _selectedPaymentMethod == 'online',
               onTap: () => _selectPaymentMethod('online'),
             ),
-            
+
             const Spacer(),
-            
+
             // Continue Button
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _selectedPaymentMethod != null ? _continueWithPayment : null,
+                onPressed: _selectedPaymentMethod != null
+                    ? _continueWithPayment
+                    : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
@@ -115,7 +117,9 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.secondary.withValues(alpha: 0.1) : Colors.white,
+          color: isSelected
+              ? AppColors.secondary.withValues(alpha: 0.1)
+              : Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? AppColors.primary : Colors.grey[300]!,
@@ -161,11 +165,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
               ),
             ),
             if (isSelected)
-              Icon(
-                Icons.check_circle,
-                color: AppColors.primary,
-                size: 24,
-              ),
+              Icon(Icons.check_circle, color: AppColors.primary, size: 24),
           ],
         ),
       ),
